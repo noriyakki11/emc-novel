@@ -54,19 +54,29 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   let lens = 22, viewW = 2, viewH = 2, lighting = lightings[0];
 
   // ---- assets ------------------------------------------------------------------------------------------------------------
+  // Pictures are decoded off the main thread where the browser can (an <img> is decoded on the main thread at its first
+  // draw: the 4096 px colour atlas froze the page for about 0.2 s). ImageBitmaps ignore flipY, so a card is flipped here.
   const textures = new THREE.TextureLoader();
-  const loadTexture = url => retry(i => textures.loadAsync(i > 1 ? `${url}${v ? '&' : '?'}retry=${i}` : url));
+  const bitmaps = typeof createImageBitmap === 'function' && (orientation => new THREE.ImageBitmapLoader()
+    .setOptions(orientation ? { imageOrientation: orientation, premultiplyAlpha: 'none' } : { premultiplyAlpha: 'none' }));
+  const atlasBitmaps = bitmaps && bitmaps(), cardBitmaps = bitmaps && bitmaps('flipY');
+  async function loadPicture(url, flip) {
+    const loader = flip ? cardBitmaps : atlasBitmaps;
+    if (!loader) { const t = await textures.loadAsync(url); t.flipY = flip; return t; }
+    const t = new THREE.Texture(await loader.loadAsync(url));
+    t.flipY = false;
+    t.needsUpdate = true;
+    return t;
+  }
   onStep('카메라');
   const shots = await retry(() => fetch(`${assets}/workshop_shots.json${v}`).then(r => { if (!r.ok) throw new Error(`${r.status} shots`); return r.json(); }));
   onStep('작업실 형상');
   const gltf = await retry(() => new GLTFLoader().loadAsync(`${assets}/workshop.glb${v}`));
   onStep('색 지도');
-  const atlases = {};
-  for (const l of lightings) {
-    const t = await loadTexture(`${assets}/workshop_${l}.webp${v}`);
-    t.flipY = false;
-    atlases[l] = t;
-  }
+  const atlasUrl = l => `${assets}/workshop_${l}.webp${v}`;
+  const loadAtlas = l => retry(i => loadPicture(i > 1 ? `${atlasUrl(l)}${v ? '&' : '?'}retry=${i}` : atlasUrl(l), false));
+  const atlases = {}, pending = {};
+  for (const l of lightings) atlases[l] = await loadAtlas(l);
   const roomMaterial = flatMaterial(renderer, atlases[lighting], { dim, saturate });
   const room = gltf.scene;
   const meshes = [];
@@ -158,6 +168,25 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
     renderer.render(overlay, camera);
   }
 
+  // Compile every shader and send the atlases and meshes to the GPU now, while the page is still loading. Left to the
+  // first frame, this froze the start of the opening for about 0.3 s (and the first night frame for 0.2 s).
+  // Call after resize() and after making the cards, so their shaders and the line targets are ready too.
+  async function prepare() {
+    Object.values(atlases).forEach(t => renderer.initTexture(t));
+    const jobs = [];
+    for (const [pass, target] of [['normal', normalTarget], ['id', idTarget]]) {
+      meshes.forEach(o => { o.material = passes[pass][o.userData.lines]; });
+      renderer.setRenderTarget(target);   // a shader drawn into a target differs from one drawn on the page
+      jobs.push(renderer.compileAsync(scene, camera));
+    }
+    meshes.forEach(o => { o.material = roomMaterial; });
+    renderer.setRenderTarget(null);
+    jobs.push(renderer.compileAsync(scene, camera), renderer.compileAsync(edgeScene, flatCamera),
+      renderer.compileAsync(overlay, camera));
+    await Promise.all(jobs);   // the GPU driver compiles in the background where it can
+    render();
+  }
+
   // A character card as a picture standing in the room, turned to the camera about its vertical axis. Drawn like the
   // browser draws a 2D <img> (stored sRGB values, no colour conversion), read 0.75 of a mip level sharper so its thin
   // lines keep the 2D card's weight when shrunk.
@@ -174,26 +203,37 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
           gl_FragColor = vec4(mix(vec3(l), c.rgb, saturate) * dim, c.a);
         }`,
     });
+    material.visible = false;   // until its first picture is ready (an empty texture draws as a black board)
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(height * aspect, height).translate(0, height / 2, 0), material);
     mesh.visible = false;
     overlay.add(mesh);
-    let source = '';
-    const loaded = new Map();   // src -> texture (an <img> laid out on the page reports its on-screen size, not the
-                                // picture's, so each card is loaded again as its own Image)
+    let wanted = '';
+    // src -> texture on the GPU (an <img> laid out on the page reports its on-screen size, not the picture's, so each
+    // card is loaded again as its own picture)
+    const loaded = new Map();
+    function load(src) {
+      const job = loadPicture(src, true).then(t => {
+        t.colorSpace = THREE.NoColorSpace;
+        t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        renderer.initTexture(t);
+        return t;
+      });
+      job.catch(e => { loaded.delete(src); console.warn('[3D] card picture failed:', src, e); });
+      return job;
+    }
     return {
       mesh,
-      // show the picture at this address on the card (the novel passes its currently shown card)
+      // show the picture at this address on the card (the novel passes its currently shown card); the previous
+      // picture stays until the new one is decoded and on the GPU
       setImage(src) {
-        if (!src || src === source) return;
-        source = src;
-        let t = loaded.get(src);
-        if (!t) {
-          t = new THREE.TextureLoader().load(src);
-          t.colorSpace = THREE.NoColorSpace;
-          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-          loaded.set(src, t);
-        }
-        material.uniforms.map.value = t;
+        if (!src || src === wanted) return;
+        wanted = src;
+        if (!loaded.has(src)) loaded.set(src, load(src));
+        loaded.get(src).then(t => {
+          if (wanted !== src) return;
+          material.uniforms.map.value = t;
+          material.visible = true;
+        }, () => {});
       },
       setTone(dim, sat) { material.uniforms.dim.value = dim; material.uniforms.saturate.value = sat; },
       place(position) {
@@ -207,10 +247,19 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   const b2t = ([x, y, z = 0]) => new THREE.Vector3(x, z, -y);
 
   return {
-    THREE, renderer, camera, scene, shots, door, b2t, render, resize, makeCard,
+    THREE, renderer, camera, scene, shots, door, b2t, render, resize, makeCard, prepare,
     get viewW() { return viewW; }, get viewH() { return viewH; },
     setLens(mm) { lens = mm; applyLens(); },
-    setLighting(l) { if (atlases[l]) { lighting = l; roomMaterial.uniforms.map.value = atlases[l]; } },
+    // a lighting not loaded up front is fetched now; the room keeps the current one until it is ready
+    setLighting(l) {
+      if (atlases[l]) { lighting = l; roomMaterial.uniforms.map.value = atlases[l]; return; }
+      if (!SKY[l] || pending[l]) return;
+      pending[l] = loadAtlas(l).then(t => {
+        atlases[l] = t;
+        renderer.initTexture(t);
+        lighting = l; roomMaterial.uniforms.map.value = t;
+      }, e => { delete pending[l]; console.warn('[3D] lighting failed:', l, e); });
+    },
     get lighting() { return lighting; },
     setDoor(radians) { if (door) door.rotation.y = radians; },
     look(eye, target) { camera.position.copy(eye); camera.lookAt(target); },

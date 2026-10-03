@@ -35,12 +35,22 @@ const ARRIVE = {
 };
 const WALKS = { 'entrance>bench': { eye: [[-1.6, -2.0, 1.32]], look: [[-1.0, 0.5, 1.2]], ms: 2600 } };
 
+// The game opens one stage (?stage=N): load only the lighting its places use (each atlas is 4096 px, about 90 MB on
+// the GPU). The whole novel loads both.
+function lightingsToLoad() {
+  const only = Number(params.get('stage'));
+  if (!only || typeof STAGES !== 'object' || !STAGES[only]) return ['day', 'night'];
+  const ids = [STAGES[only].bg, ...(typeof BEATS === 'object' ? BEATS : []).filter(b => b.stage === only && b.bg).map(b => b.bg)];
+  const lights = [...new Set(ids.map(id => PLACES[id] && PLACES[id].light).filter(Boolean))];
+  return lights.length ? lights : ['day', 'night'];
+}
+
 async function start() {
   const world = document.getElementById('world');
   const actor = document.getElementById('actor');
   const app = document.getElementById('app');
   const { createRoom } = await import(`${root}/room3d.js${version ? `?v=${version}` : ''}`);
-  const room = await createRoom({ container: world, assets: `${root}/out`, lightings: ['day', 'night'], version });
+  const room = await createRoom({ container: world, assets: `${root}/out`, lightings: lightingsToLoad(), version });
   const { THREE, b2t } = room;
 
   const fade = document.createElement('div');
@@ -81,7 +91,6 @@ async function start() {
       if (t >= next && t < ms - 350) { sfx('step'); next += 520; }
     };
   }
-  app.classList.add('three');
   window.stage3dRoom = room;   // for checks from the console
 
   const resize = () => room.resize(app.clientWidth, app.clientHeight);
@@ -103,6 +112,8 @@ async function start() {
   // frame hide her; once the camera rests she is the novel's own 2D card again, at the same place and size.
   const card3d = room.makeCard(CARD_H, 832 / 1248);
   window.stage3dCard = card3d;   // for checks from the console
+  await room.prepare();   // shaders and pictures onto the GPU before the opening starts (else its first frame stalls)
+  app.classList.add('three');
   function inRoom(v) {
     card3d.mesh.visible = v;
     actor.style.transition = 'none';
