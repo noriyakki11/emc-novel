@@ -94,7 +94,6 @@ async function start() {
   window.stage3dRoom = room;   // for checks from the console
 
   const resize = () => room.resize(app.clientWidth, app.clientHeight);
-  addEventListener('resize', resize);
   resize();
 
   // ---- timed steps ----------------------------------------------------------------------------------------------------
@@ -113,9 +112,12 @@ async function start() {
   const card3d = room.makeCard(CARD_H, 832 / 1248);
   window.stage3dCard = card3d;   // for checks from the console
   await room.prepare();   // shaders and pictures onto the GPU before the opening starts (else its first frame stalls)
+  if (window.__stage3dGaveUp) throw new Error('too-slow');   // the novel already started on its 2D backgrounds
   app.classList.add('three');
+  addEventListener('resize', resize);
   function inRoom(v) {
     card3d.mesh.visible = v;
+    room.invalidate();
     actor.style.transition = 'none';
     setActorShown(!v);
     void actor.offsetWidth;
@@ -193,13 +195,18 @@ async function start() {
   }
 
   // ---- every frame: advance steps, put the card where Jane stands, draw the room ---------------------------------------
+  // Most of the novel is dialogue with nothing moving in the room: then nothing is drawn (redrawing the full-screen room
+  // every frame kept the GPU and the page compositor busy the whole time).
   const top = new THREE.Vector3();
   function frame(now) {
+    requestAnimationFrame(frame);
+    const moving = tweens.size > 0;
     for (const tw of [...tweens]) {
       const t = Math.min(1, (now - tw.t0) / tw.ms);
       tw.fn(tw.easing(t));
       if (t >= 1) { tweens.delete(tw); tw.ok(); }
     }
+    if (!moving && !room.needsRender) return;
     const foot = jane.clone(); foot.y += janeBob;
     if (card3d.mesh.visible) {
       card3d.setImage(actor.querySelector('.card.shown')?.src);
@@ -213,7 +220,6 @@ async function start() {
     actor.style.bottom = `${room.viewH - a.y}px`;
     actor.style.height = `${Math.max(0, a.y - b.y)}px`;
     room.render();
-    requestAnimationFrame(frame);
   }
   requestAnimationFrame(frame);
 
@@ -233,7 +239,7 @@ async function start() {
     turn() {
       if (!place) return;
       const cam = PLACES[place].cam, j0 = jane.clone(), j1 = spot(cam, 'talk');
-      if (instant) { jane.copy(j1); return; }
+      if (instant) { jane.copy(j1); room.invalidate(); return; }
       sfx('turn');
       sfx('step', { delay: 0.3, volume: 0.7 });
       tween(520, k => { jane.lerpVectors(j0, j1, k); janeBob = Math.sin(k * Math.PI) * 0.04; });
@@ -255,8 +261,34 @@ if (!params.has('flat')) {
   try { api = await start(); debugNote('on'); } catch (e) {
     debugNote(`off-${e && e.message}`);
     console.warn('[3D] background unavailable, using 2D renders:', e);
+    const gl = window.stage3dRoom?.renderer;
+    if (gl) { gl.dispose(); gl.forceContextLoss(); window.stage3dRoom = null; }
     document.querySelectorAll('#world > canvas').forEach(c => c.remove());
     document.getElementById('app').classList.remove('three');
   }
 }
 window.__stage3dResolve?.(api);
+
+// ?perf: a corner readout for lag reports (frames per second, the longest frame, 3D pictures drawn per second, the GPU)
+if (params.has('perf')) {
+  const box = document.createElement('div');
+  box.style.cssText = 'position:fixed;left:8px;bottom:8px;z-index:9999;font:12px/1.4 monospace;color:#fff;'
+    + 'background:rgba(0,0,0,.65);padding:4px 8px;border-radius:6px;pointer-events:none;white-space:pre';
+  document.body.appendChild(box);
+  const room = api && window.stage3dRoom;
+  const gl = room && room.renderer.getContext();
+  const info = gl && gl.getExtension('WEBGL_debug_renderer_info');
+  const gpu = room ? (info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'GPU ?') : '3D 꺼짐 (2D 배경)';
+  let frames = 0, worst = 0, last = performance.now(), since = last, drawn = room ? room.draws : 0;
+  const tick = now => {
+    frames += 1; worst = Math.max(worst, now - last); last = now;
+    if (now - since >= 1000) {
+      const draws = room ? room.draws - drawn : 0;
+      box.textContent = `${Math.round(frames * 1000 / (now - since))} fps · 가장 긴 프레임 ${Math.round(worst)}ms · 3D 그림 ${draws}/초 · ${innerWidth}x${innerHeight}@${devicePixelRatio}
+${gpu}`;
+      frames = 0; worst = 0; since = now; drawn = room ? room.draws : 0;
+    }
+    requestAnimationFrame(tick);
+  };
+  requestAnimationFrame(tick);
+}

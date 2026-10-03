@@ -82,16 +82,20 @@
   </div>
 
   <script>
-    // stage3d.js (a module, loads after these scripts) resolves this with its API, or null for the 2D backgrounds
-    window.stage3dReady = new Promise(resolve => { window.__stage3dResolve = resolve; setTimeout(() => resolve(null), 15000); });
+    // stage3d.js (a module, loads after these scripts) resolves this with its API, or null for the 2D backgrounds.
+    // After 15 s the novel starts in 2D and a 3D room that arrives later stays unused (__stage3dGaveUp).
+    window.stage3dReady = new Promise(resolve => {
+      window.__stage3dResolve = resolve;
+      setTimeout(() => { window.__stage3dGaveUp = true; resolve(null); }, 15000);
+    });
   </script>
   <script src="emotions.js?v=3db33f7d"></script>
   <script src="story.js?v=7b31b113"></script>
-  <script src="staging.js?v=f56cb75d"></script>
+  <script src="staging.js?v=74ad664e"></script>
   <script src="sound.js?v=acc841ea"></script>
   <script src="fx.js?v=c247f28b"></script>
   <script src="app.js?v=9aaa0163"></script>
   <script type="importmap">{ "imports": { "three": "./3d/vendor/three/build/three.module.js" } }</script>
-  <script type="module" src="stage3d.js?v=44a8e416"></script>
+  <script type="module" src="stage3d.js?v=774c22bc"></script>
 </body>
 </html>

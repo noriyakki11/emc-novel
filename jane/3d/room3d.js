@@ -41,7 +41,8 @@ const passMaterial = (flag, body) => new THREE.ShaderMaterial({
 // version: appended to asset URLs (?v=) so a new bake is not served from the browser's cache
 export async function createRoom({ container, assets, lightings = ['day'], dim = 0.86, saturate = 0.95, version = '', onStep = () => {} }) {
   const v = version ? `?v=${version}` : '';
-  const renderer = new THREE.WebGLRenderer({ antialias: true });
+  // without a usable GPU (software WebGL) this throws and the novel keeps its 2D background renders
+  const renderer = new THREE.WebGLRenderer({ antialias: true, failIfMajorPerformanceCaveat: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.outputColorSpace = THREE.SRGBColorSpace;
   renderer.toneMapping = THREE.NoToneMapping;
@@ -52,6 +53,9 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   const scene = new THREE.Scene();
   const camera = new THREE.PerspectiveCamera(50, 1, 0.05, 60);
   let lens = 22, viewW = 2, viewH = 2, lighting = lightings[0];
+  // set by every change to what the picture shows; a page can skip drawing while nothing changed (needsRender)
+  let dirty = true, draws = 0;
+  const invalidate = () => { dirty = true; };
 
   // ---- assets ------------------------------------------------------------------------------------------------------------
   // Pictures are decoded off the main thread where the browser can (an <img> is decoded on the main thread at its first
@@ -151,9 +155,11 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
     edgeMaterial.uniforms.texel.value.set(1 / pw, 1 / ph);
     edgeMaterial.uniforms.width.value = Math.max(1, 1.9 * ph / 900);   // Freestyle 1.85-2.25 px at 1600x900
     applyLens();
+    dirty = true;
   }
 
   function render() {
+    dirty = false; draws++;
     for (const [pass, target] of [['normal', normalTarget], ['id', idTarget]]) {
       meshes.forEach(o => { o.material = passes[pass][o.userData.lines]; });
       renderer.setRenderTarget(target);
@@ -233,12 +239,20 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
           if (wanted !== src) return;
           material.uniforms.map.value = t;
           material.visible = true;
+          dirty = true;
         }, () => {});
       },
-      setTone(dim, sat) { material.uniforms.dim.value = dim; material.uniforms.saturate.value = sat; },
+      setTone(dim, sat) {
+        const u = material.uniforms;
+        if (u.dim.value === dim && u.saturate.value === sat) return;
+        u.dim.value = dim; u.saturate.value = sat; dirty = true;
+      },
       place(position) {
+        const turn = Math.atan2(camera.position.x - position.x, camera.position.z - position.z);
+        if (mesh.position.equals(position) && mesh.rotation.y === turn) return;
         mesh.position.copy(position);
-        mesh.rotation.y = Math.atan2(camera.position.x - position.x, camera.position.z - position.z);
+        mesh.rotation.y = turn;
+        dirty = true;
       },
     };
   }
@@ -247,22 +261,28 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   const b2t = ([x, y, z = 0]) => new THREE.Vector3(x, z, -y);
 
   return {
-    THREE, renderer, camera, scene, shots, door, b2t, render, resize, makeCard, prepare,
+    THREE, renderer, camera, scene, shots, door, b2t, render, resize, makeCard, prepare, invalidate,
+    get needsRender() { return dirty; },
+    get draws() { return draws; },   // pictures drawn so far (for the ?perf readout)
     get viewW() { return viewW; }, get viewH() { return viewH; },
-    setLens(mm) { lens = mm; applyLens(); },
+    setLens(mm) { if (mm !== lens) { lens = mm; applyLens(); dirty = true; } },
     // a lighting not loaded up front is fetched now; the room keeps the current one until it is ready
     setLighting(l) {
-      if (atlases[l]) { lighting = l; roomMaterial.uniforms.map.value = atlases[l]; return; }
+      if (atlases[l]) {
+        if (l !== lighting || roomMaterial.uniforms.map.value !== atlases[l]) dirty = true;
+        lighting = l; roomMaterial.uniforms.map.value = atlases[l];
+        return;
+      }
       if (!SKY[l] || pending[l]) return;
       pending[l] = loadAtlas(l).then(t => {
         atlases[l] = t;
         renderer.initTexture(t);
-        lighting = l; roomMaterial.uniforms.map.value = t;
+        lighting = l; roomMaterial.uniforms.map.value = t; dirty = true;
       }, e => { delete pending[l]; console.warn('[3D] lighting failed:', l, e); });
     },
     get lighting() { return lighting; },
-    setDoor(radians) { if (door) door.rotation.y = radians; },
-    look(eye, target) { camera.position.copy(eye); camera.lookAt(target); },
+    setDoor(radians) { if (door && door.rotation.y !== radians) { door.rotation.y = radians; dirty = true; } },
+    look(eye, target) { camera.position.copy(eye); camera.lookAt(target); dirty = true; },
     // screen position (CSS px from the top-left of the canvas) of a point in the room
     toScreen(v) {
       const p = v.clone().project(camera);
