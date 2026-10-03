@@ -215,6 +215,7 @@ function renderText(text, node) {
     if (i >= chars.length) { revealText(); return; }
     const ch = chars[i++];
     ui.text.textContent = chars.slice(0, i).join('');
+    if (i % 3 === 1 && !/[\s.,!?…~'"“”‘’()·]/u.test(ch)) Sound.blip(mood);   // her voice: a soft blip every few letters
     typingTimer = setTimeout(step, /[.!?…]/u.test(ch) && chars[i] !== ch ? profile.pause : profile.pace);
   };
   step();
@@ -266,6 +267,7 @@ function renderChoices(node) {
       });
       waitingChoice = false;
       ui.choicePanel.classList.add('hidden');
+      Sound.play('ui_choice');
       const replies = opt.onSelect() || [];
       state.choices.push({ id: node.id, index, label: opt.label });
       saveChoice(node.id, state[node.id]);
@@ -279,8 +281,10 @@ function renderChoices(node) {
 
 function next() {
   if (!started || waitingChoice) return;
+  if (Stage3D && Stage3D.consumeInput()) return;   // the first press at a stage start opens the door
   if (typing) { revealText(); return; }
   if (finished) { if (GAME_MODE) $('endCard').classList.remove('hidden'); return; }
+  Sound.play('ui_next');
   pointer += 1;
   renderCurrent();
 }
@@ -326,6 +330,13 @@ ui.dialogueBox.addEventListener('click', e => { if (!e.target.closest('button'))
 ui.startBtn.addEventListener('click', startGame);
 ui.restartBtn.addEventListener('click', startGame);
 ui.rewindBtn.addEventListener('click', rewindChoice);
+const soundToggle = $('soundToggle');
+function showSoundState() {
+  soundToggle.textContent = Sound.muted ? '소리 꺼짐' : '소리 켜짐';
+  soundToggle.setAttribute('aria-pressed', String(!Sound.muted));
+}
+soundToggle.addEventListener('click', () => { Sound.setMuted(!Sound.muted); showSoundState(); Sound.play('ui_toggle'); });
+showSoundState();
 ui.actingToggle.addEventListener('click', () => {
   actingEnabled = !actingEnabled; FX.setEnabled(actingEnabled);
   if (Stage3D) Stage3D.setInstant(!actingEnabled);

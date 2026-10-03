@@ -60,9 +60,13 @@ const FX = (() => {
     shine: h => [[h.right + 4, h.eyes + 1, 6.5, 'twinkle']],
   };
 
+  const sound = (name, opts) => { if (enabled && typeof Sound !== 'undefined') Sound.play(name, opts); };
+
   function marks(emotion) {
     head.replaceChildren(...[...head.children].filter(c => c.dataset.keep));
     if (!emotion) return;
+    const first = (EMOTION_MARKS[emotion] || [])[0];
+    if (first) sound(`mark_${first}`);
     const h = HEAD[outfit];
     (EMOTION_MARKS[emotion] || []).forEach(kind => {
       (MARK_PLACE[kind] || (() => []))(h).forEach(([x, y, w, anim], i) => {
@@ -241,6 +245,7 @@ const FX = (() => {
     if (!node) return;
     persistent.delete(name);
     if (!enabled) { node.remove(); return; }
+    sound('peel');
     node.classList.add('peel');
     setTimeout(() => node.remove(), 420);
   }
@@ -260,7 +265,11 @@ const FX = (() => {
       const hay = `${node.cue || ''} ${node.text || ''}`;
       FX_BEATS.filter(b => b.stage === stage && hay.includes(b.match)).forEach(b => {
         (b.off || []).forEach(off);
-        (b.on || []).forEach(n => EFFECTS[n]?.());
+        (b.on || []).forEach(n => {
+          EFFECTS[n]?.();
+          sound(`fx_${n}`);
+          if (n === 'poof') sound('fx_poof_paper', { delay: 0.08 });
+        });
       });
     },
     scene(tag, stage) {
@@ -269,6 +278,7 @@ const FX = (() => {
       const [num, title] = tag.split(' · ');
       chapterNum.textContent = num; chapterTitle.textContent = title || '';
       if (!enabled) return;
+      sound('chapter');
       chapter.classList.remove('on'); void chapter.offsetWidth; chapter.classList.add('on');
     },
     snapshot: () => [...persistent.keys()],

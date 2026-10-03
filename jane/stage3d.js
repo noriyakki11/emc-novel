@@ -41,6 +41,34 @@ async function start() {
   const fade = document.createElement('div');
   fade.className = 'stage3d-fade';
   world.appendChild(fade);
+  // at a stage start the hero opens the door: this press is also what lets the browser play sound
+  const doorPrompt = document.createElement('button');
+  doorPrompt.type = 'button';
+  doorPrompt.className = 'door-prompt hidden';
+  doorPrompt.textContent = '문을 연다';
+  app.appendChild(doorPrompt);
+  let doorGate = null;
+  const waitForDoor = () => new Promise(ok => { doorGate = ok; doorPrompt.classList.remove('hidden'); });
+  function openDoor() {
+    if (!doorGate) return false;
+    const go = doorGate;
+    doorGate = null;
+    doorPrompt.classList.add('hidden');
+    Sound.open();
+    go();
+    return true;
+  }
+  doorPrompt.addEventListener('click', e => { e.stopPropagation(); openDoor(); });
+  const sfx = (name, opts) => { if (!instant) Sound.play(name, opts); };
+  // footsteps on the wooden floor while the camera walks (not in the last moment, when it settles)
+  function steps(ms) {
+    const t0 = performance.now();
+    let next = 180;
+    return () => {
+      const t = performance.now() - t0;
+      if (t >= next && t < ms - 350) { sfx('step'); next += 520; }
+    };
+  }
   app.classList.add('three');
   window.stage3dRoom = room;   // for checks from the console
 
@@ -64,6 +92,7 @@ async function start() {
   function setActorShown(v) { actorShown = v; actor.style.opacity = v ? '' : '0'; }
   function settle(id, janeAt = 'talk') {
     const p = PLACES[id];
+    doorGate = null; doorPrompt.classList.add('hidden');
     room.setLighting(p.light);
     room.setDoor(DOOR_OPEN);
     const q = pose(p.cam);
@@ -93,6 +122,10 @@ async function start() {
     fade.style.opacity = 1; setActorShown(false);
     await hold(1300);                                // the stage title shows on black
     if (!alive()) return;
+    await waitForDoor();
+    if (!alive()) return;
+    sfx('door_open');
+    sfx('door_creak', { delay: 0.55 });
     const swing = tween(1600, k => {
       room.setDoor(DOOR_OPEN * k);
       if (k > 0.35 && !actorShown) setActorShown(true);   // she is seen once the door is part open
@@ -101,7 +134,8 @@ async function start() {
     await tween(700, k => { fade.style.opacity = 1 - k; });
     await swing;
     if (!alive()) return;
-    await tween(a.ms, walk);
+    const step = steps(a.ms);
+    await tween(a.ms, k => { walk(k); step(); });
   }
 
   async function walkTo(id) {
@@ -113,9 +147,10 @@ async function start() {
     room.setLighting(to.light);
     const walk = pathTo(to.cam, { eye: [CAMS[from.cam].eye, ...w.eye], look: [CAMS[from.cam].target, ...w.look] });
     const j0 = jane.clone(), j1 = spot(to.cam);
+    const step = steps(w.ms);
     await tween(w.ms, k => {
       if (my !== run) return;
-      walk(k);
+      walk(k); step();
       jane.lerpVectors(j0, j1, Math.min(1, k * 1.15));   // she walks a little ahead of the camera
       janeBob = Math.abs(Math.sin(k * Math.PI * 5)) * 0.025 * (1 - k);
     });
@@ -157,9 +192,13 @@ async function start() {
       if (!place) return;
       const cam = PLACES[place].cam, j0 = jane.clone(), j1 = spot(cam, 'talk');
       if (instant) { jane.copy(j1); return; }
+      sfx('turn');
+      sfx('step', { delay: 0.3, volume: 0.7 });
       tween(520, k => { jane.lerpVectors(j0, j1, k); janeBob = Math.sin(k * Math.PI) * 0.04; });
     },
     setInstant(v) { instant = v; },
+    // a press while the door is waiting opens it (and is not a dialogue advance)
+    consumeInput: () => openDoor(),
   };
 }
 

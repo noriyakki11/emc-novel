@@ -95,6 +95,12 @@ button { font: inherit; }
 .app.three .background { display: none; }
 .app.three .actor { transition: opacity .4s ease; }
 .stage3d-fade { position: absolute; inset: 0; z-index: 4; background: #000; opacity: 0; pointer-events: none; }
+/* 'open the door' at a stage start (also the press that lets the browser play sound) */
+.door-prompt { position: absolute; z-index: 16; left: 50%; top: 58%; transform: translate(-50%, -50%); padding: 12px 30px;
+  border: 1px solid rgba(255, 233, 190, .55); border-radius: 999px; background: rgba(30, 20, 26, .6); color: #fff3dc;
+  font-size: 17px; font-weight: 700; letter-spacing: .08em; cursor: pointer; animation: door-prompt 1.6s ease-in-out infinite; }
+.door-prompt:hover { background: rgba(60, 38, 48, .75); }
+@keyframes door-prompt { 50% { box-shadow: 0 0 0 6px rgba(255, 233, 190, .12); border-color: rgba(255, 233, 190, .9); } }
 
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
