@@ -1,0 +1,103 @@
+:root {
+  --ink: #f7f1f5;
+  --muted: #cbbfc6;
+  --panel: rgba(19, 13, 18, .86);
+  --panel-strong: rgba(17, 11, 16, .95);
+  --line: rgba(255, 255, 255, .14);
+  --accent: #e8a9bd;
+  --emotion-color: #efc67d;
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; height: 100%; background: #120d11; }
+body { font-family: Pretendard, "Noto Sans KR", "Malgun Gothic", system-ui, sans-serif; color: var(--ink); overflow: hidden; }
+button { font: inherit; }
+
+.app { position: relative; width: 100vw; height: 100dvh; overflow: hidden; background: #120d11; }
+.background { position: absolute; inset: 0; background: center / cover no-repeat; opacity: 0;
+  filter: saturate(.95) brightness(.86); transition: opacity .35s ease; }
+.background.shown { opacity: 1; }
+
+/* The actor box has the card's own 832:1248 shape so head-anchored effects can be placed in card percentages.
+   The lower ~38% of a card sits behind the dialogue box (cards are fitted by head size and position). */
+.world { position: absolute; inset: 0; }
+.actor { position: absolute; z-index: 2; left: 50%; bottom: 0; height: 92%; aspect-ratio: 832 / 1248;
+  transform: translateX(-50%); pointer-events: none; }
+.actor-body { position: absolute; inset: 0; transform-origin: 50% 100%; }
+.card { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; opacity: 0;
+  filter: drop-shadow(0 10px 26px rgba(0, 0, 0, .45)); transition: opacity .18s ease; }
+.card.shown { opacity: 1; }
+/* cards are drawn in daylight; on a night background they are dimmed a little so she sits in the same light */
+.app.night .card { filter: drop-shadow(0 10px 26px rgba(0, 0, 0, .5)) brightness(.86) saturate(.92); }
+.app.instant .card, .app.instant .background { transition: none; }
+.fx-head, .fx-screen { position: absolute; inset: 0; pointer-events: none; }
+.fx-screen { z-index: 3; overflow: hidden; }
+
+.overlay-top { position: absolute; z-index: 6; top: 0; left: 0; right: 0; display: flex; justify-content: space-between;
+  align-items: flex-start; gap: 12px; padding: 14px 18px; background: linear-gradient(rgba(10, 6, 9, .72), transparent); }
+.title-wrap h1 { margin: 0; font-size: 17px; letter-spacing: .02em; }
+.scene-tag { margin: 3px 0 0; font-size: 13px; color: var(--accent); }
+.controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: flex-end; }
+.choice-count { font-size: 12px; color: var(--muted); }
+.secondary { border: 1px solid var(--line); background: rgba(255, 255, 255, .07); color: var(--ink);
+  padding: 6px 11px; border-radius: 999px; font-size: 12px; cursor: pointer; }
+.secondary:hover:not(:disabled) { border-color: var(--accent); }
+.secondary:disabled { opacity: .45; cursor: default; }
+.location-label { position: absolute; z-index: 5; top: 64px; left: 18px; font-size: 12px; color: var(--muted);
+  padding: 4px 10px; border-radius: 999px; background: rgba(0, 0, 0, .35); }
+.review-chip { position: absolute; z-index: 7; top: 64px; right: 18px; max-width: 60vw; font: 12px/1.4 Consolas, monospace;
+  color: #ffe9a6; background: rgba(0, 0, 0, .65); border: 1px solid rgba(255, 233, 166, .4); padding: 5px 9px; border-radius: 8px; }
+
+.dialogue-box { position: absolute; z-index: 6; left: 50%; bottom: 18px; transform: translateX(-50%);
+  width: min(1120px, calc(100% - 26px)); min-height: 236px; max-height: calc(100dvh - 120px); overflow-y: auto;
+  padding: 18px 22px 14px; border: 1px solid var(--line); border-top: 2px solid var(--emotion-color); border-radius: 16px;
+  background: var(--panel); backdrop-filter: blur(10px); cursor: pointer; outline: none; }
+.speaker-row, .bottom-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.speaker-group { display: flex; align-items: center; gap: 10px; }
+.speaker { font-weight: 700; font-size: 18px; }
+.dialogue-box[data-speaker="기록"] .speaker, .dialogue-box[data-speaker="시스템"] .speaker { color: var(--muted); }
+.dialogue-box[data-speaker="플레이어"] .speaker { color: #c8b2e9; }
+.emotion-tag { font-size: 12px; padding: 2px 9px; border-radius: 999px; color: #1b1217; background: var(--emotion-color); }
+.hint { font-size: 12px; color: var(--muted); }
+.cue-box { margin-top: 10px; padding: 7px 11px; border-left: 2px solid var(--emotion-color);
+  background: rgba(255, 255, 255, .04); color: #d7ccd3; font-size: 13px; line-height: 1.6; }
+.cue-marker { margin-right: 6px; opacity: .6; }
+.text { margin: 12px 0 10px; font-size: 18px; line-height: 1.7; min-height: 2.6em; white-space: pre-wrap; }
+.choice-panel { display: grid; gap: 8px; margin: 4px 0 10px; }
+/* side by side on wide screens so the box stays low and her face stays clear while choosing */
+@media (min-width: 900px) {
+  .choice-panel { grid-template-columns: repeat(3, 1fr); }
+  .choice-button { align-items: flex-start; line-height: 1.5; }
+}
+.choice-button { display: flex; gap: 10px; align-items: center; text-align: left; padding: 10px 13px; border-radius: 11px;
+  border: 1px solid var(--line); background: rgba(255, 255, 255, .06); color: var(--ink); cursor: pointer; }
+.choice-button:hover, .choice-button:focus-visible { border-color: var(--accent); background: rgba(232, 169, 189, .14); }
+.choice-number { font-size: 12px; color: var(--accent); font-variant-numeric: tabular-nums; }
+.keys { font-size: 11px; color: var(--muted); opacity: .7; }
+.primary { border: none; border-radius: 999px; padding: 8px 18px; background: var(--accent); color: #241018; font-weight: 700; cursor: pointer; }
+.primary:disabled { opacity: .5; cursor: default; }
+.primary.big { padding: 11px 28px; font-size: 16px; }
+
+.modal { position: absolute; inset: 0; z-index: 20; display: grid; place-items: center; background: rgba(8, 5, 7, .62); }
+.modal-card { width: min(560px, calc(100% - 32px)); padding: 24px; border-radius: 18px; border: 1px solid var(--line); background: var(--panel-strong); }
+.modal-card h2 { margin: 0 0 10px; }
+.modal-card p, .modal-card li { line-height: 1.65; color: #e3d8de; font-size: 14px; }
+.modal-card ul { padding-left: 18px; }
+
+/* game mode (?stage=N inside the in-game WebView): no replay or review controls, an end card when the stage is over */
+.app.game #rewindBtn, .app.game #restartBtn, .app.game .choice-count, .app.game .keys { display: none; }
+.end-card { position: absolute; inset: 0; z-index: 16; display: grid; place-content: center; text-align: center;
+  background: radial-gradient(ellipse at center, rgba(18, 10, 16, .78), rgba(10, 6, 9, .94)); animation: end-in .6s ease-out both; }
+@keyframes end-in { from { opacity: 0; } to { opacity: 1; } }
+.end-title { font-size: clamp(24px, 3.2vw, 40px); font-weight: 800; }
+.end-sub { margin-top: 10px; font-size: 15px; color: var(--muted); }
+
+.hidden { display: none !important; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+.app.ui-hidden .overlay-top, .app.ui-hidden .dialogue-box, .app.ui-hidden .location-label { opacity: 0; pointer-events: none; }
+
+@media (max-width: 720px) {
+  .actor { height: 80%; }
+  .dialogue-box { bottom: 10px; width: calc(100% - 18px); min-height: 220px; padding: 14px; }
+  .overlay-top { flex-direction: column; }
+  .location-label, .review-chip { top: 96px; }
+}
