@@ -8,7 +8,7 @@ const CARD_ROOT = 'assets/cards';
 const BG_ROOT = 'assets/bg';
 const IMG_EXT = 'webp';   // build_web.py rewrites the three lines above for the deployed copy (WebP next to the page)
 const STAGE3D_ROOT = './3d';   // the live 3D workshop (room3d.js, out/, vendor/); build_web.py copies it to '3d'
-const STAGE3D_V = '308eecd2';                        // build_web.py: a hash of the 3D files, so a new bake skips the cache
+const STAGE3D_V = '2ecfc30f';                        // build_web.py: a hash of the 3D files, so a new bake skips the cache
 
 const BACKGROUNDS = Object.freeze({
   home_workbench_day: '제인의 집 · 작업대',

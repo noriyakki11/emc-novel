@@ -102,6 +102,7 @@ async function start() {
   // While the camera moves (the walk in, walking inside), Jane is a card standing in the 3D room so walls and the door
   // frame hide her; once the camera rests she is the novel's own 2D card again, at the same place and size.
   const card3d = room.makeCard(CARD_H, 832 / 1248);
+  window.stage3dCard = card3d;   // for checks from the console
   function inRoom(v) {
     card3d.mesh.visible = v;
     actor.style.transition = 'none';
@@ -190,7 +191,7 @@ async function start() {
     }
     const foot = jane.clone(); foot.y += janeBob;
     if (card3d.mesh.visible) {
-      card3d.setImage(actor.querySelector('.card.shown'));
+      card3d.setImage(actor.querySelector('.card.shown')?.src);
       const night = app.classList.contains('night');
       card3d.setTone(night ? 0.86 : 1, night ? 0.92 : 1);   // as .app.night .card dims the 2D card
       card3d.place(foot);

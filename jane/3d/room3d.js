@@ -177,20 +177,23 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
     const mesh = new THREE.Mesh(new THREE.PlaneGeometry(height * aspect, height).translate(0, height / 2, 0), material);
     mesh.visible = false;
     overlay.add(mesh);
-    let source = null;
+    let source = '';
+    const loaded = new Map();   // src -> texture (an <img> laid out on the page reports its on-screen size, not the
+                                // picture's, so each card is loaded again as its own Image)
     return {
       mesh,
-      // show this <img> (already loaded) on the card
-      setImage(img) {
-        if (img === source || !img || !img.complete || !img.naturalWidth) return;
-        source = img;
-        const old = material.uniforms.map.value;
-        const t = new THREE.Texture(img);
-        t.colorSpace = THREE.NoColorSpace;
-        t.anisotropy = renderer.capabilities.getMaxAnisotropy();
-        t.needsUpdate = true;
+      // show the picture at this address on the card (the novel passes its currently shown card)
+      setImage(src) {
+        if (!src || src === source) return;
+        source = src;
+        let t = loaded.get(src);
+        if (!t) {
+          t = new THREE.TextureLoader().load(src);
+          t.colorSpace = THREE.NoColorSpace;
+          t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+          loaded.set(src, t);
+        }
         material.uniforms.map.value = t;
-        if (old) old.dispose();
       },
       setTone(dim, sat) { material.uniforms.dim.value = dim; material.uniforms.saturate.value = sat; },
       place(position) {
