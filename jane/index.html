@@ -4,8 +4,8 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>제인의 주문서 실험록 · 카드판</title>
-  <link rel="stylesheet" href="styles.css?v=e6019435" />
-  <link rel="stylesheet" href="fx.css?v=f7ebf2c5" />
+  <link rel="stylesheet" href="styles.css?v=144f5305" />
+  <link rel="stylesheet" href="fx.css?v=a74a2ead" />
 </head>
 <body>
   <div id="app" class="app" data-scene="1">
@@ -80,10 +80,16 @@
     </div>
   </div>
 
+  <script>
+    // stage3d.js (a module, loads after these scripts) resolves this with its API, or null for the 2D backgrounds
+    window.stage3dReady = new Promise(resolve => { window.__stage3dResolve = resolve; setTimeout(() => resolve(null), 15000); });
+  </script>
   <script src="emotions.js?v=3db33f7d"></script>
   <script src="story.js?v=7b31b113"></script>
-  <script src="staging.js?v=ae1abab3"></script>
-  <script src="fx.js?v=8ff24412"></script>
-  <script src="app.js?v=e9e02989"></script>
+  <script src="staging.js?v=9e1d73a7"></script>
+  <script src="fx.js?v=8a14e24e"></script>
+  <script src="app.js?v=7e9e2b60"></script>
+  <script type="importmap">{ "imports": { "three": "3d/vendor/three/build/three.module.js" } }</script>
+  <script type="module" src="stage3d.js?v=b380c882"></script>
 </body>
 </html>

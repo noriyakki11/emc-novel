@@ -91,6 +91,11 @@ button { font: inherit; }
 .end-title { font-size: clamp(24px, 3.2vw, 40px); font-weight: 800; }
 .end-sub { margin-top: 10px; font-size: 15px; color: var(--muted); }
 
+/* 3D workshop background (stage3d.js): the canvas replaces the 2D renders; the card is placed by script each frame */
+.app.three .background { display: none; }
+.app.three .actor { transition: opacity .4s ease; }
+.stage3d-fade { position: absolute; inset: 0; z-index: 4; background: #000; opacity: 0; pointer-events: none; }
+
 .hidden { display: none !important; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .app.ui-hidden .overlay-top, .app.ui-hidden .dialogue-box, .app.ui-hidden .location-label { opacity: 0; pointer-events: none; }

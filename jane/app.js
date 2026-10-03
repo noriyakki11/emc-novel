@@ -58,6 +58,7 @@ let actingEnabled = !motionPreference.matches;
 const cardUrl = id => `${CARD_ROOT}/${id.split('_')[0]}/${id}.${IMG_EXT}`;
 const bgUrl = id => `${BG_ROOT}/${id}.${IMG_EXT}`;
 const outfitOf = scene => STAGES[scene].outfit;
+const BACK_CARD = 'back_workbench';   // Jane from behind at her bench (opening of the first visit)
 
 function preloadStage(scene) {
   const { outfit, bg } = STAGES[scene];
@@ -66,10 +67,19 @@ function preloadStage(scene) {
 }
 
 // ---- background and card layers: two of each, the newest request wins -------------------------------------
+// With the 3D workshop (stage3d.js) the background is a camera place instead of a picture.
+// how: 'arrive' (a stage starts: the door opens and the hero walks in), 'walk' (moving inside), 'instant' (rewind, setup).
+let Stage3D = null;
 let bgToken = 0;
-function showBackground(id) {
-  if (id === shownBg) return;
+function showBackground(id, how = 'walk', opts = {}) {
+  if (id === shownBg && how !== 'arrive') return;
   shownBg = id;
+  ui.app.classList.toggle('night', id.endsWith('_night'));
+  if (Stage3D && Stage3D.show(id, how, opts)) {
+    ui.locationLabel.textContent = BACKGROUNDS[id] || id;
+    updateReviewChip();
+    return;
+  }
   const token = ++bgToken;
   const [front, back] = ui.bgA.classList.contains('shown') ? [ui.bgA, ui.bgB] : [ui.bgB, ui.bgA];
   const img = new Image();
@@ -80,7 +90,6 @@ function showBackground(id) {
   };
   img.src = bgUrl(id);
   ui.locationLabel.textContent = BACKGROUNDS[id] || id;
-  ui.app.classList.toggle('night', id.endsWith('_night'));
   updateReviewChip();
 }
 
@@ -88,6 +97,11 @@ let cardToken = 0;
 function showCard(id, note = '') {
   cardNote = note;
   if (id === shownCard) { updateReviewChip(); return; }
+  // from her back to a front card: a paper-doll turn, and in the 3D room she steps up to the hero
+  if (shownCard && shownCard.includes(BACK_CARD) && !id.includes(BACK_CARD)) {
+    FX.act('turn');
+    if (Stage3D) Stage3D.turn();
+  }
   shownCard = id;
   const token = ++cardToken;
   const [front, back] = ui.cardA.classList.contains('shown') ? [ui.cardA, ui.cardB] : [ui.cardB, ui.cardA];
@@ -132,7 +146,10 @@ function stageScene(node) {
   preloadStage(currentScene);
   FX.setOutfit(outfitOf(currentScene));
   FX.scene(node.tag, currentScene);
-  if (n) showBackground(STAGES[currentScene].bg);
+  // the first visit opens on Jane at her bench with her back to the door; she turns on her first line
+  const back = n === 1 && CARDS[outfitOf(1)].includes(BACK_CARD);
+  if (n) showBackground(STAGES[currentScene].bg, 'arrive', { back });
+  if (back) { showCard(`${outfitOf(1)}_${BACK_CARD}`, '뒷모습'); return; }
   const [id, note] = expressionCard(mood);
   showCard(id, note);
 }
@@ -297,7 +314,7 @@ function rewindChoice() {
   currentScene = cp.scene; mood = cp.mood;
   ui.app.dataset.scene = String(currentScene);
   ui.sceneTag.textContent = cp.tag;
-  showBackground(cp.bg); showCard(cp.card);
+  showBackground(cp.bg, 'instant'); showCard(cp.card);
   FX.setOutfit(outfitOf(currentScene));
   FX.restore(cp.fx, currentScene);
   finished = false;
@@ -311,6 +328,7 @@ ui.restartBtn.addEventListener('click', startGame);
 ui.rewindBtn.addEventListener('click', rewindChoice);
 ui.actingToggle.addEventListener('click', () => {
   actingEnabled = !actingEnabled; FX.setEnabled(actingEnabled);
+  if (Stage3D) Stage3D.setInstant(!actingEnabled);
   if (typing) revealText(); updateButtons();
 });
 document.addEventListener('keydown', e => {
@@ -327,12 +345,16 @@ document.addEventListener('keydown', e => {
 FX.setEnabled(actingEnabled);
 const firstStage = GAME_MODE ? ONLY_STAGE : 1;
 preloadStage(firstStage);
-if (GAME_MODE) {
-  ui.app.classList.add('game');
-  startGame();
-} else {
+if (GAME_MODE) ui.app.classList.add('game');
+ui.startBtn.disabled = true;
+// the 3D workshop loads first (a few MB); without it the 2D background renders are used
+(window.stage3dReady || Promise.resolve(null)).then(api => {
+  Stage3D = api && api.active ? api : null;
+  if (Stage3D) Stage3D.setInstant(!actingEnabled);
+  ui.startBtn.disabled = false;
+  if (GAME_MODE) { startGame(); return; }
   currentScene = firstStage;
-  showBackground(STAGES[firstStage].bg);
+  showBackground(STAGES[firstStage].bg, 'instant');
   showCard(expressionCard(SCENE_MOODS[firstStage])[0]);
   updateButtons();
-}
+});

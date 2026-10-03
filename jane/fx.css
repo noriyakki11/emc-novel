@@ -6,6 +6,9 @@
 @keyframes act-rise { 0% { transform: none; } 35% { transform: translateY(-3.2%) scale(1.012, .99); } 70% { transform: translateY(.4%) scale(.995, 1.008); } 100% { transform: none; } }
 @keyframes act-recoil { 0% { transform: none; } 18% { transform: translateY(-2.6%) scale(1.02); } 36% { transform: translate(-1%, -1.4%); } 54% { transform: translate(1%, -.6%); } 72% { transform: translate(-.5%, 0); } 100% { transform: none; } }
 @keyframes act-sink { 0% { transform: none; } 45% { transform: translateY(1.6%) scale(1.01, .975); } 100% { transform: none; } }
+/* turning round from her back: the card narrows to its edge and comes back (the new card swaps in at the edge) */
+.act-turn { animation: act-turn .38s ease-in-out; }
+@keyframes act-turn { 0% { transform: none; } 45% { transform: scaleX(.03) translateY(-1.5%); } 55% { transform: scaleX(.03) translateY(-1.5%); } 100% { transform: none; } }
 @keyframes act-settle { 0%, 100% { transform: none; } 33% { transform: rotate(-1deg); } 66% { transform: rotate(.8deg); } }
 
 /* ---- emotion marks next to her head ---- */

@@ -78,7 +78,7 @@ const FX = (() => {
   // ---- acting: a small whole-card motion when her feeling changes -------------------------------------------
   function act(motion) {
     if (!enabled || !motion) return;
-    body.classList.remove('act-rise', 'act-recoil', 'act-sink', 'act-settle');
+    body.classList.remove('act-rise', 'act-recoil', 'act-sink', 'act-settle', 'act-turn');
     void body.offsetWidth;
     body.classList.add(`act-${motion}`);
   }

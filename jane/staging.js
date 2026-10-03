@@ -7,6 +7,8 @@
 const CARD_ROOT = 'assets/cards';
 const BG_ROOT = 'assets/bg';
 const IMG_EXT = 'webp';   // build_web.py rewrites the three lines above for the deployed copy (WebP next to the page)
+const STAGE3D_ROOT = '3d';   // the live 3D workshop (room3d.js, out/, vendor/); build_web.py copies it to '3d'
+const STAGE3D_V = '1495a62b';                        // build_web.py: a hash of the 3D files, so a new bake skips the cache
 
 const BACKGROUNDS = Object.freeze({
   home_workbench_day: '제인의 집 · 작업대',
@@ -109,7 +111,8 @@ const EXPRESSION_FALLBACK = Object.freeze({
 
 const CARDS = Object.freeze({
   bunny: ['joy', 'playful', 'sheepish', 'startled', 'pensive', 'annoyed', 'sincere', 'confident', 'proud',
-    'quiet_pride', 'curious', 'resolute', 'relieved', 'tired', 'hurt', 'neutral', 'scroll_bundle', 'practice_sheet'],
+    'quiet_pride', 'curious', 'resolute', 'relieved', 'tired', 'hurt', 'neutral', 'scroll_bundle', 'practice_sheet',
+    'back_workbench'],
   hood: ['joy', 'playful', 'sheepish', 'startled', 'pensive', 'sincere', 'curious', 'annoyed', 'tired', 'relieved',
     'confident', 'quiet_pride', 'hurt', 'resolute', 'proud', 'neutral', 'palm_pattern'],
   alchemist: ['joy', 'playful', 'sheepish', 'startled', 'pensive', 'sincere', 'curious', 'confident', 'resolute',
