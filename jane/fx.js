@@ -91,6 +91,44 @@ const FX = (() => {
     return s;
   }
   function transient(parent, node, ms) { parent.appendChild(node); setTimeout(() => node.remove(), ms); }
+
+  // the hero seen from behind: one dark shape (head with nape tufts, neck, shoulders), lit from above once the ears appear
+  const HERO_HEAD = 'M128 334 L94 316 C58 266 46 186 70 136 C96 82 146 46 204 44 C266 42 318 80 336 138 '
+    + 'C354 196 342 266 306 316 L272 334 L254 356 L236 328 L217 362 L199 330 L181 360 L163 328 L145 352 Z';
+  const HERO_BODY = 'M150 330 H250 L262 372 C312 380 372 404 400 448 V520 H0 V448 C28 404 88 380 138 372 Z';
+  const HERO_COLLAR = 'M138 372 C170 394 230 394 262 372';
+  // a few loose hair strands near the crown so the shape reads as hair from behind, not a rock (not all meeting at one point)
+  const HERO_STRANDS = ['M200 112 C176 140 140 186 122 250', 'M212 116 C204 170 196 226 192 300', 'M222 114 C252 150 280 196 290 262',
+    'M196 106 C160 102 120 124 96 168', 'M228 108 C262 104 296 122 318 160'];
+  const HERO_SVG = svg('0 0 400 520', '<defs>'
+    + `<clipPath id="heroHeadClip"><path d="${HERO_HEAD}"/></clipPath>`
+    + '<linearGradient id="heroRimGrad" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0" stop-color="#fff0c4" stop-opacity="1"/><stop offset=".3" stop-color="#ffd596" stop-opacity=".55"/>'
+    + '<stop offset=".62" stop-color="#ffd596" stop-opacity="0"/></linearGradient></defs>'
+    + `<g class="hero-shape"><path d="${HERO_BODY}"/><path d="${HERO_HEAD}"/></g>`
+    + `<path d="${HERO_COLLAR}" fill="none" stroke="#2c2130" stroke-width="5" stroke-linecap="round"/>`
+    + `<g clip-path="url(#heroHeadClip)" fill="none" stroke="#2a1f2d" stroke-width="4" stroke-linecap="round" opacity=".75">${HERO_STRANDS.map(d => `<path d="${d}"/>`).join('')}</g>`
+    + `<path class="hero-rim" d="${HERO_HEAD}" fill="none" stroke="url(#heroRimGrad)" stroke-width="16" clip-path="url(#heroHeadClip)"/>`);
+
+  // a light that leaves the glyph in front of her and arcs onto the hero's head, with a short trail
+  function orb(cut) {
+    const sr = screen.getBoundingClientRect(), ar = el('actor').getBoundingClientRect();
+    const sx = ar.left + ar.width * .5 - sr.left, sy = ar.top + ar.height * .55 - sr.top;
+    const ex = cut.offsetLeft + cut.offsetWidth * .5, ey = cut.offsetTop + cut.offsetHeight * .1;
+    const mx = (sx + ex) / 2, my = Math.min(sy, ey) - sr.height * .14;
+    for (let i = 0; i < 5; i++) {
+      const o = document.createElement('div');
+      o.className = 'hero-orb';
+      screen.appendChild(o);
+      const s = 1 - i * .14;
+      o.animate([
+        { transform: `translate(${sx}px, ${sy}px) scale(${.4 * s})`, opacity: 0 },
+        { transform: `translate(${mx}px, ${my}px) scale(${s})`, opacity: 1 - i * .16, offset: .55 },
+        { transform: `translate(${ex}px, ${ey}px) scale(${1.4 * s})`, opacity: 1 - i * .16, offset: .9 },
+        { transform: `translate(${ex}px, ${ey}px) scale(${2.4 * s})`, opacity: 0 },
+      ], { duration: 720, delay: 260 + i * 22, easing: 'cubic-bezier(.45, .05, .4, 1)', fill: 'both' }).onfinish = () => o.remove();
+    }
+  }
   function shake() { if (!enabled) return; world.classList.remove('shake'); void world.offsetWidth; world.classList.add('shake'); }
   function flash(strength = 0.55) {
     if (!enabled) return;
@@ -149,10 +187,24 @@ const FX = (() => {
       );
       body.appendChild(wrap); persistent.set('paper_hands', wrap);
     },
+    // 3단계: 문양 끝에서 출발한 빛이 날아가 용사 머리 위에서 토끼 귀가 된다.
+    // 용사는 아바타가 사람마다 달라서 뒤에서 본 실루엣으로 왼쪽 아래에 걸친다(어깨 너머 구도).
     rabbit_ears() {
       if (persistent.has('rabbit_ears')) return;
-      const s = sprite(fxUrl('FX_RABBIT_EARS'), 'left:50%;top:6%;width:66%', enabled ? 'ears' : 'ears-still');
-      screen.appendChild(s); persistent.set('rabbit_ears', s);
+      const cut = document.createElement('div');
+      cut.className = `hero-cut${enabled ? ' play' : ''}`;
+      cut.innerHTML = HERO_SVG;
+      const ears = document.createElement('img');
+      ears.className = 'hero-ears'; ears.alt = ''; ears.src = fxUrl('FX_RABBIT_EARS');
+      cut.appendChild(ears);
+      screen.appendChild(cut); persistent.set('rabbit_ears', cut);
+      if (!enabled) return;
+      orb(cut);
+      // a short screen-only moment: the dialogue box steps aside so the whole head and the ears read, then returns
+      const app = el('app');
+      app.classList.add('cutin');
+      clearTimeout(app._cutin);
+      app._cutin = setTimeout(() => app.classList.remove('cutin'), 2300);
     },
     title_flash() {
       if (!enabled) return;
@@ -195,6 +247,7 @@ const FX = (() => {
 
   function clearAll() {
     [...persistent.keys()].forEach(n => { persistent.get(n).remove(); persistent.delete(n); });
+    clearTimeout(el('app')._cutin); el('app').classList.remove('cutin');
     head.replaceChildren(); request.classList.add('hidden');
   }
 
