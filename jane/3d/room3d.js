@@ -122,6 +122,8 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   const edgeScene = new THREE.Scene();
   edgeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), edgeMaterial));
   const flatCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+  // drawn last, depth-tested against the room but outside the line pass (a character card standing in the room)
+  const overlay = new THREE.Scene();
 
   // Blender's sensor is 36 mm wide and fitted to the wider side of the frame
   function applyLens() {
@@ -153,13 +155,56 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
     renderer.setClearColor(SKY[lighting] ?? SKY.day, 1); renderer.clear();
     renderer.render(scene, camera);
     renderer.render(edgeScene, flatCamera);
+    renderer.render(overlay, camera);
+  }
+
+  // A character card as a picture standing in the room, turned to the camera about its vertical axis. Drawn like the
+  // browser draws a 2D <img> (stored sRGB values, no colour conversion), read 0.75 of a mip level sharper so its thin
+  // lines keep the 2D card's weight when shrunk.
+  function makeCard(height, aspect) {
+    const material = new THREE.ShaderMaterial({
+      transparent: true,
+      uniforms: { map: { value: null }, dim: { value: 1 }, saturate: { value: 1 } },
+      vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }',
+      fragmentShader: `uniform sampler2D map; uniform float dim; uniform float saturate; varying vec2 vUv;
+        void main() {
+          vec4 c = texture2D(map, vUv, -0.75);
+          if (c.a < 0.04) discard;
+          float l = dot(c.rgb, vec3(0.213, 0.715, 0.072));
+          gl_FragColor = vec4(mix(vec3(l), c.rgb, saturate) * dim, c.a);
+        }`,
+    });
+    const mesh = new THREE.Mesh(new THREE.PlaneGeometry(height * aspect, height).translate(0, height / 2, 0), material);
+    mesh.visible = false;
+    overlay.add(mesh);
+    let source = null;
+    return {
+      mesh,
+      // show this <img> (already loaded) on the card
+      setImage(img) {
+        if (img === source || !img || !img.complete || !img.naturalWidth) return;
+        source = img;
+        const old = material.uniforms.map.value;
+        const t = new THREE.Texture(img);
+        t.colorSpace = THREE.NoColorSpace;
+        t.anisotropy = renderer.capabilities.getMaxAnisotropy();
+        t.needsUpdate = true;
+        material.uniforms.map.value = t;
+        if (old) old.dispose();
+      },
+      setTone(dim, sat) { material.uniforms.dim.value = dim; material.uniforms.saturate.value = sat; },
+      place(position) {
+        mesh.position.copy(position);
+        mesh.rotation.y = Math.atan2(camera.position.x - position.x, camera.position.z - position.z);
+      },
+    };
   }
 
   // Blender coordinates (x, y, z up) -> three.js
   const b2t = ([x, y, z = 0]) => new THREE.Vector3(x, z, -y);
 
   return {
-    THREE, renderer, camera, scene, shots, door, b2t, render, resize,
+    THREE, renderer, camera, scene, shots, door, b2t, render, resize, makeCard,
     get viewW() { return viewW; }, get viewH() { return viewH; },
     setLens(mm) { lens = mm; applyLens(); },
     setLighting(l) { if (atlases[l]) { lighting = l; roomMaterial.uniforms.map.value = atlases[l]; } },
