@@ -251,6 +251,7 @@ async function start() {
 }
 
 let api = null;
+let offReason = params.has('flat') ? '?flat' : '';   // why the 2D backgrounds are used (for the ?perf readout)
 const debugNote = s => {   // ?doordebug: the outcome goes into the address too, readable from the game's side
   if (!params.has('doordebug')) return;
   const q = new URLSearchParams(location.search);
@@ -259,7 +260,8 @@ const debugNote = s => {   // ?doordebug: the outcome goes into the address too,
 };
 if (!params.has('flat')) {
   try { api = await start(); debugNote('on'); } catch (e) {
-    debugNote(`off-${e && e.message}`);
+    offReason = (e && e.message) || String(e);
+    debugNote(`off-${offReason}`);
     console.warn('[3D] background unavailable, using 2D renders:', e);
     const gl = window.stage3dRoom?.renderer;
     if (gl) { gl.dispose(); gl.forceContextLoss(); window.stage3dRoom = null; }
@@ -278,7 +280,18 @@ if (params.has('perf')) {
   const room = api && window.stage3dRoom;
   const gl = room && room.renderer.getContext();
   const info = gl && gl.getExtension('WEBGL_debug_renderer_info');
-  const gpu = room ? (info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'GPU ?') : '3D 꺼짐 (2D 배경)';
+  // without the room, a throwaway canvas still tells which GPU WebGL would get, and whether it is software only
+  const probe = () => {
+    const c = document.createElement('canvas');
+    const g = c.getContext('webgl2') || c.getContext('webgl');
+    if (!g) return 'WebGL 없음';
+    const i = g.getExtension('WEBGL_debug_renderer_info');
+    const name = i ? g.getParameter(i.UNMASKED_RENDERER_WEBGL) : 'GPU ?';
+    const fast = document.createElement('canvas').getContext('webgl2', { failIfMajorPerformanceCaveat: true });
+    return `${name}${fast ? '' : ' · 소프트웨어 WebGL'}`;
+  };
+  const gpu = room ? (info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : 'GPU ?')
+    : `3D 꺼짐 (2D 배경: ${offReason || '?'}) · ${probe()}`;
   let frames = 0, worst = 0, last = performance.now(), since = last, drawn = room ? room.draws : 0;
   const tick = now => {
     frames += 1; worst = Math.max(worst, now - last); last = now;
