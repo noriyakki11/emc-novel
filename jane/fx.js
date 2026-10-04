@@ -20,10 +20,22 @@ const FX = (() => {
   const world = el('world'), body = el('actorBody'), head = el('fxHead'), screen = el('fxScreen');
   const flashEl = el('flash'), chapter = el('chapter'), chapterNum = el('chapterNum'), chapterTitle = el('chapterTitle');
   const request = el('request'), requestText = el('requestText');
-  let enabled = true, outfit = 'bunny';
-  const persistent = new Map();   // name -> element (forehead_paper, paper_hands, rabbit_ears)
+  let enabled = true, outfit = 'bunny', card = 'bunny_startled';
+  const persistent = new Map();   // name -> element, including the stage 2 experiment preview
+  const timers = new Set(), transients = new Set();
+  let stopReveal = null;
+  let soundEpoch = 0;
+  const EFFECT_TIMES = {
+    broad_glow: 2850, spark_pop: 1850, poof: 3400, rabbit_ears: 3500, title_flash: 2600, plate_compare: 2800,
+  };
+  function later(fn, ms) {
+    const timer = setTimeout(() => { timers.delete(timer); fn(); }, ms);
+    timers.add(timer);
+    return timer;
+  }
   const fxUrl = name => `${FX_ROOT}/${name}.${IMG_EXT}`;
-  ['FX_PINPRICK', 'FX_BROAD_GLOW', 'FX_GLYPH_LINE', 'FX_SMOKE', 'FX_PAPER_v03', 'FX_RABBIT_EARS']
+  ['FX_PINPRICK', 'FX_BROAD_GLOW', 'FX_GLYPH_LINE', 'FX_SMOKE', 'FX_PAPER_v03', 'FX_RABBIT_EARS', 'FX_SCROLL_MANGA_v02',
+    'FX_HAND_MANGA_v02', 'FX_PLATES_MANGA_v02', 'FX_NOTEBOOK_MANGA_v01']
     .forEach(n => preload(fxUrl(n)));
 
   // ---- SVG marks ------------------------------------------------------------------------------------------
@@ -60,7 +72,10 @@ const FX = (() => {
     shine: h => [[h.right + 4, h.eyes + 1, 6.5, 'twinkle']],
   };
 
-  const sound = (name, opts) => { if (enabled && typeof Sound !== 'undefined') Sound.play(name, opts); };
+  const sound = (name, opts) => {
+    const epoch = soundEpoch;
+    if (enabled && typeof Sound !== 'undefined') Sound.play(name, { ...opts, isCurrent: () => enabled && epoch === soundEpoch });
+  };
 
   function marks(emotion) {
     head.replaceChildren(...[...head.children].filter(c => c.dataset.keep));
@@ -94,7 +109,126 @@ const FX = (() => {
     s.src = src; s.alt = ''; s.className = `sprite ${cls}`; s.style.cssText = css;
     return s;
   }
-  function transient(parent, node, ms) { parent.appendChild(node); setTimeout(() => node.remove(), ms); }
+  function transient(parent, node, ms) {
+    parent.appendChild(node); transients.add(node);
+    later(() => { transients.delete(node); node.remove(); }, ms);
+  }
+
+  function positionHandPapers() {
+    const wrap = persistent.get('paper_hands');
+    if (!wrap) return;
+    const points = PAPER_HANDS_POSES[card] || PAPER_HANDS_POSES.bunny_startled;
+    [...wrap.children].forEach((paper, i) => {
+      paper.style.left = `${points[i][0]}%`;
+      paper.style.top = `${points[i][1]}%`;
+    });
+  }
+
+  // One generated manga scene, shown one frame at a time beside her face.
+  function positionScrollFocus(pane = screen.querySelector('.scroll-test')) {
+    if (!pane?.isConnected) return;
+    const sr = screen.getBoundingClientRect(), ar = el('actor').getBoundingClientRect();
+    const margin = 12, faceWidth = ar.width * .31;
+    const size = Math.min(Math.max(80, faceWidth * 1.15), sr.width * .46, sr.height * .3);
+    const gap = Math.max(12, size * .08);
+    const faceLeft = ar.left - sr.left + ar.width * .33;
+    const faceRight = ar.left - sr.left + ar.width * .67;
+    const faceTop = ar.top - sr.top + ar.height * .2;
+    let x = faceRight + gap, y = faceTop - size * .18;
+    if (x + size > sr.width - margin) {
+      if (faceLeft - gap - size >= margin) x = faceLeft - gap - size;
+      else {
+        x = sr.width - size - margin;
+        const toolbar = el('app').querySelector('.overlay-top').getBoundingClientRect();
+        const location = el('locationLabel').getBoundingClientRect();
+        y = Math.max(toolbar.bottom - sr.top + 12, location.bottom - sr.top + 8, faceTop - size - 16);
+      }
+    }
+    pane.style.width = `${size}px`;
+    pane.style.height = `${size}px`;
+    pane.style.setProperty('--cut-font', `${Math.min(15, Math.max(7, size * .07))}px`);
+    pane.style.left = `${Math.max(margin, Math.min(x, sr.width - size - margin))}px`;
+    pane.style.top = `${Math.max(margin, Math.min(y, sr.height - size - margin))}px`;
+  }
+  const positionPanels = () => screen.querySelectorAll('.scroll-test').forEach(p => positionScrollFocus(p));
+  window.addEventListener('resize', () => requestAnimationFrame(positionPanels));
+
+  function makeScrollFocus() {
+    const pane = document.createElement('div');
+    pane.className = `scroll-test${currentStage === 1 ? ' single' : ''}${enabled ? ' play' : ''}`;
+    pane.dataset.phase = 'ready';
+    const view = document.createElement('div'); view.className = 'scroll-test-view';
+    const camera = document.createElement('div'); camera.className = 'manga-camera';
+    const atlas = document.createElement('img'); atlas.className = 'manga-atlas';
+    atlas.src = fxUrl('FX_SCROLL_MANGA_v02'); atlas.alt = '';
+    camera.appendChild(atlas); view.appendChild(camera); pane.appendChild(view);
+    screen.appendChild(pane);
+    positionScrollFocus(pane);
+    requestAnimationFrame(() => positionScrollFocus(pane));
+    return pane;
+  }
+
+  function studyPane(name, asset, kind) {
+    if (persistent.has(name)) return persistent.get(name);
+    const pane = document.createElement('div');
+    pane.className = `scroll-test study-cut ${kind}${enabled ? ' play' : ''}`;
+    const view = document.createElement('div'); view.className = 'scroll-test-view';
+    const art = document.createElement('img'); art.className = 'study-art'; art.alt = ''; art.src = fxUrl(asset);
+    view.appendChild(art); pane.appendChild(view);
+    screen.appendChild(pane); persistent.set(name, pane);
+    positionScrollFocus(pane);
+    requestAnimationFrame(() => positionScrollFocus(pane));
+    return pane;
+  }
+
+  // Keep visual states, including a changed page/result, when hiding effects or rewinding a choice.
+  function snapshot() {
+    const names = [...persistent.keys()];
+    if (persistent.get('scroll_focus')?.dataset.sheet === 'second') names.push('scroll_second');
+    if (['narrow', 'broad', 'results'].includes(persistent.get('plate_focus')?.dataset.phase)) names.push('plate_compare');
+    if (persistent.get('notebook_focus')?.dataset.page === 'blank') names.push('notebook_blank');
+    return names;
+  }
+
+  function paperToForehead(cut) {
+    const sr = screen.getBoundingClientRect(), cr = cut.getBoundingClientRect(), ar = el('actor').getBoundingClientRect();
+    const h = HEAD[outfit], x = cr.left + cr.width * .5 - sr.left, y = cr.top + cr.height * .5 - sr.top;
+    const dx = ar.left + ar.width * (h.cx + 2) / 100 - sr.left - x;
+    const dy = ar.top + ar.height * (h.forehead + 3) / 100 - sr.top - y;
+    const bit = sprite(fxUrl('FX_PAPER_v03'), `left:${x}px;top:${y}px;width:${ar.width * .12}px`, 'flying-scrap');
+    transient(screen, bit, 820);
+    bit.animate([
+      { transform: 'translate(-50%,-50%) scale(.35) rotate(30deg)' },
+      { transform: `translate(calc(-50% + ${dx * .55}px),calc(-50% + ${dy * .5 - 35}px)) scale(.8) rotate(150deg)`, offset: .5 },
+      { transform: `translate(calc(-50% + ${dx}px),calc(-50% + ${dy}px)) rotate(348deg)` },
+    ], { duration: 780, easing: 'ease-out', fill: 'both' });
+    later(() => EFFECTS.forehead_paper(), 780);
+  }
+
+  function chargeManga(cut, ms) {
+    cut.classList.add('zooming');
+    const charge = document.createElement('div'); charge.className = 'manga-charge';
+    charge.style.setProperty('--charge-time', `${ms}ms`);
+    transient(cut.querySelector('.scroll-test-view'), charge, ms);
+  }
+
+  function burstManga(cut, word, fragments = false) {
+    cut.classList.remove('burst'); void cut.offsetWidth; cut.classList.add('burst');
+    const ink = document.createElement('div'); ink.className = 'manga-burst-ink';
+    const core = document.createElement('div'); core.className = 'manga-impact-core';
+    const caption = document.createElement('strong'); caption.className = 'manga-sfx'; caption.textContent = word;
+    ink.append(core, caption);
+    if (fragments) {
+      for (let i = 0; i < 7; i++) {
+        const bit = document.createElement('i'); bit.className = 'manga-fragment';
+        const angle = (i * 51 - 120) * Math.PI / 180, radius = cut.offsetWidth * .54;
+        bit.style.cssText = `--dx:${Math.cos(angle) * radius}px;--dy:${Math.sin(angle) * radius}px;--spin:${i % 2 ? 260 : -230}deg`;
+        ink.appendChild(bit);
+      }
+    }
+    transient(cut.querySelector('.scroll-test-view'), ink, 1050);
+    act('recoil');
+  }
 
   // the hero seen from behind: one dark shape (head with nape tufts, neck, shoulders), lit from above once the ears appear
   const HERO_HEAD = 'M128 334 L94 316 C58 266 46 186 70 136 C96 82 146 46 204 44 C266 42 318 80 336 138 '
@@ -117,20 +251,22 @@ const FX = (() => {
   // a light that leaves the glyph in front of her and arcs onto the hero's head, with a short trail
   function orb(cut) {
     const sr = screen.getBoundingClientRect(), ar = el('actor').getBoundingClientRect();
-    const sx = ar.left + ar.width * .5 - sr.left, sy = ar.top + ar.height * .55 - sr.top;
+    const hr = persistent.get('hand_focus')?.getBoundingClientRect();
+    const sx = (hr ? hr.left + hr.width * .47 : ar.left + ar.width * .5) - sr.left;
+    const sy = (hr ? hr.top + hr.height * .53 : ar.top + ar.height * .55) - sr.top;
     const ex = cut.offsetLeft + cut.offsetWidth * .5, ey = cut.offsetTop + cut.offsetHeight * .1;
     const mx = (sx + ex) / 2, my = Math.min(sy, ey) - sr.height * .14;
     for (let i = 0; i < 5; i++) {
       const o = document.createElement('div');
       o.className = 'hero-orb';
-      screen.appendChild(o);
+      transient(screen, o, 1450);
       const s = 1 - i * .14;
       o.animate([
         { transform: `translate(${sx}px, ${sy}px) scale(${.4 * s})`, opacity: 0 },
         { transform: `translate(${mx}px, ${my}px) scale(${s})`, opacity: 1 - i * .16, offset: .55 },
         { transform: `translate(${ex}px, ${ey}px) scale(${1.4 * s})`, opacity: 1 - i * .16, offset: .9 },
         { transform: `translate(${ex}px, ${ey}px) scale(${2.4 * s})`, opacity: 0 },
-      ], { duration: 720, delay: 260 + i * 22, easing: 'cubic-bezier(.45, .05, .4, 1)', fill: 'both' }).onfinish = () => o.remove();
+      ], { duration: 1000, delay: 160 + i * 22, easing: 'cubic-bezier(.45, .05, .4, 1)', fill: 'both' }).onfinish = () => o.remove();
     }
   }
   function shake() { if (!enabled) return; world.classList.remove('shake'); void world.offsetWidth; world.classList.add('shake'); }
@@ -142,10 +278,84 @@ const FX = (() => {
 
   // ---- event effects --------------------------------------------------------------------------------------
   const EFFECTS = {
+    scroll_focus() {
+      if (!persistent.has('scroll_focus')) persistent.set('scroll_focus', makeScrollFocus());
+    },
+    scroll_second() {
+      EFFECTS.scroll_focus();
+      const cut = persistent.get('scroll_focus'); cut.dataset.sheet = 'second';
+      if (!enabled || cut.classList.contains('sheet-swap')) return;
+      cut.classList.add('sheet-swap');
+      for (const kind of ['old', 'new']) {
+        const sheet = document.createElement('div'); sheet.className = `swap-sheet ${kind}`;
+        sheet.innerHTML = svg('0 0 50 60', '<path d="M25 7 L30 15 L28 35 L37 35 L37 39 L28 39 L28 50 L22 50 L22 39 L13 39 L13 35 L22 35 L20 15 Z" fill="none" stroke="#544946" stroke-width="2"/>');
+        transient(cut.querySelector('.scroll-test-view'), sheet, 650);
+      }
+      sound('peel', { rate: 1.2 });
+      later(() => cut.classList.remove('sheet-swap'), 640);
+    },
+    research_focus() {
+      const pane = studyPane('research_focus', 'FX_HAND_MANGA_v02', 'research-cut');
+      if (!pane.querySelector('.rune-point')) pane.querySelector('.scroll-test-view').insertAdjacentHTML('beforeend', '<i class="rune-point"></i>');
+    },
+    research_repeat() {
+      EFFECTS.research_focus();
+      const pane = persistent.get('research_focus');
+      if (enabled) pane.classList.add('repeating');
+    },
+    hand_focus() {
+      const pane = studyPane('hand_focus', 'FX_HAND_MANGA_v02', 'hand-cut');
+      if (!pane.querySelector('.rune-point')) pane.querySelector('.scroll-test-view').insertAdjacentHTML('beforeend', '<i class="rune-point"></i>');
+    },
+    plate_focus() {
+      const pane = studyPane('plate_focus', 'FX_PLATES_MANGA_v02', 'plate-cut');
+      if (!pane.querySelector('.plate-light')) pane.querySelector('.scroll-test-view').insertAdjacentHTML('beforeend', '<i class="plate-light narrow"></i><i class="plate-light broad"></i>');
+      pane.dataset.phase ||= 'ready';
+    },
+    plate_compare() {
+      EFFECTS.plate_focus();
+      const pane = persistent.get('plate_focus');
+      if (!enabled) { pane.dataset.phase = 'results'; return; }
+      pane.dataset.phase = 'narrow'; sound('fx_scroll_success');
+      later(() => { pane.dataset.phase = 'broad'; sound('fx_scroll_success'); }, 1100);
+      later(() => { pane.dataset.phase = 'results'; }, 2350);
+    },
+    notebook_focus() {
+      const pane = studyPane('notebook_focus', 'FX_NOTEBOOK_MANGA_v01', 'notebook-cut');
+      if (!pane.querySelector('.notebook-title')) {
+        const title = document.createElement('span'); title.className = 'notebook-title';
+        title.textContent = '천지를\n뒤바꿀\n주문서'; pane.querySelector('.scroll-test-view').appendChild(title);
+      }
+      pane.dataset.page ||= 'title';
+    },
+    notebook_blank() {
+      EFFECTS.notebook_focus();
+      const pane = persistent.get('notebook_focus'); pane.dataset.page = 'blank';
+      if (enabled) { pane.classList.add('page-turn'); sound('peel'); }
+    },
     flicker() {
       if (!enabled) return;
-      transient(body, sprite(fxUrl('FX_PINPRICK'), 'left:50%;top:44%;width:9%', 'flicker'), 1500);
-      transient(body, sprite(fxUrl('FX_BROAD_GLOW'), 'left:50%;top:46%;width:30%', 'flicker dim'), 1500);
+      const camera = persistent.get('scroll_focus')?.querySelector('.manga-camera');
+      if (camera) {
+        const light = document.createElement('div'); light.className = 'manga-light';
+        transient(camera, light, 1500);
+      } else {
+        transient(body, sprite(fxUrl('FX_PINPRICK'), 'left:50%;top:44%;width:9%', 'flicker'), 1500);
+        transient(body, sprite(fxUrl('FX_BROAD_GLOW'), 'left:50%;top:46%;width:30%', 'flicker dim'), 1500);
+      }
+    },
+    spark_pop() {
+      if (!enabled) return;
+      const cut = persistent.get('scroll_focus');
+      if (!cut) return;
+      cut.dataset.phase = 'charge'; chargeManga(cut, 650);
+      sound('fx_flicker');
+      later(() => {
+        cut.dataset.phase = 'spark'; burstManga(cut, '팍!');
+        sound('fx_poof', { volume: .85 });
+      }, 650);
+      // This first mishap extinguishes the light, leaving the sheet for the hand accident.
+      later(() => { cut.dataset.phase = 'ready'; cut.classList.remove('zooming', 'burst'); }, 1750);
     },
     glyph() {
       if (!enabled) return;
@@ -153,26 +363,38 @@ const FX = (() => {
     },
     broad_glow() {
       if (!enabled) return;
-      setTimeout(() => { transient(screen, sprite(fxUrl('FX_BROAD_GLOW'), 'left:50%;top:50%;width:72%', 'bloom'), 2200); flash(0.35); }, 650);
+      later(() => { transient(screen, sprite(fxUrl('FX_BROAD_GLOW'), 'left:50%;top:50%;width:72%', 'bloom'), 2200); flash(0.35); }, 650);
     },
     poof() {
+      const pane = persistent.get('scroll_focus');
+      persistent.delete('scroll_focus');
+      if (!enabled) { pane?.remove(); return; }
+      const cut = pane || makeScrollFocus();
+      cut.classList.remove('sheet-swap'); cut.querySelectorAll('.swap-sheet').forEach(n => n.remove());
+      cut.dataset.phase = 'zoom'; chargeManga(cut, 950);
+      transient(screen, cut, EFFECT_TIMES.poof);
+      // Hold the impact long enough to read, then show where the sheet used to be.
+      later(() => {
+        cut.dataset.phase = 'burst'; burstManga(cut, '펑!', true);
+        sound('fx_poof'); sound('fx_poof_paper', { delay: 0.08 });
+        later(() => paperToForehead(cut), 350);
+        later(() => { cut.dataset.phase = 'spent'; }, 1000);
+        later(() => cut.classList.add('closing'), 1950);
+      }, 950);
+    },
+    paper_flick() {
       if (!enabled) return;
-      const puff = document.createElement('div');
-      puff.className = 'puff'; puff.style.cssText = 'left:50%;top:43%;width:46%';
-      // one clump of overlapping balls (a cartoon "poof"), not separate bubbles
-      const balls = [[0, 0, 1.25], [-.42, .12, 1], [.44, .1, 1.05], [-.2, -.34, .95], [.24, -.32, .9],
-        [-.62, -.12, .75], [.64, -.16, .7], [0, .36, .85], [-.38, .4, .7], [.4, .4, .72]];
-      balls.forEach(([x, y, s], i) => {
-        const c = document.createElement('span');
-        c.style.cssText = `--dx:${x * 100}%;--dy:${y * 100}%;--s:${s};animation-delay:${i * 18}ms`;
-        puff.appendChild(c);
-      });
-      transient(body, puff, 1400);
-      transient(body, sprite(fxUrl('FX_SMOKE'), 'left:52%;top:30%;width:16%', 'rise'), 2200);
-      for (let i = 0; i < 5; i++) {
-        const p = sprite(fxUrl('FX_PAPER_v03'), `left:50%;top:44%;width:${4 + (i % 2) * 2}%;--tx:${(i - 2) * 70}%;--ty:${-60 - (i % 3) * 40}%;--r:${(i - 2) * 70}deg`, 'scatter');
-        transient(body, p, 1300);
+      const sr = screen.getBoundingClientRect(), ar = el('actor').getBoundingClientRect();
+      const x = ar.left - sr.left + ar.width * .61, y = ar.top - sr.top + ar.height * .45;
+      const dx = sr.width - x + 60;
+      for (let i = 0; i < 3; i++) {
+        const paper = sprite(fxUrl('FX_PAPER_v03'),
+          `left:${x + i * 3}px;top:${y + i * 4}px;width:${Math.max(24, ar.width * .085)}px;` +
+          `--r:${i * 13 - 10}deg;--mx:${dx * .35}px;--my:${-sr.height * .1}px;` +
+          `--dx:${dx}px;--dy:${sr.height * .08}px;animation-delay:${i * 25}ms`, 'paper-flick');
+        transient(screen, paper, 650);
       }
+      sound('peel', { volume: .65, rate: 1.35 });
     },
     forehead_paper() {
       if (persistent.has('forehead_paper')) return;
@@ -190,25 +412,45 @@ const FX = (() => {
         sprite(fxUrl('FX_PAPER_v03'), 'left:70%;top:41%;width:7.5%;--r:16deg', enabled ? 'stick jiggle' : 'stuck'),
       );
       body.appendChild(wrap); persistent.set('paper_hands', wrap);
+      positionHandPapers();
     },
-    // 3단계: 문양 끝에서 출발한 빛이 날아가 용사 머리 위에서 토끼 귀가 된다.
-    // 용사는 아바타가 사람마다 달라서 뒤에서 본 실루엣으로 왼쪽 아래에 걸친다(어깨 너머 구도).
+    // Retreat behind the player's eye, reveal only a little of the head, then return before dialogue resumes.
     rabbit_ears() {
-      if (persistent.has('rabbit_ears')) return;
+      if (!enabled || stopReveal) return;
       const cut = document.createElement('div');
-      cut.className = `hero-cut${enabled ? ' play' : ''}`;
+      cut.className = 'hero-cut camera-reveal';
       cut.innerHTML = HERO_SVG;
       const ears = document.createElement('img');
       ears.className = 'hero-ears'; ears.alt = ''; ears.src = fxUrl('FX_RABBIT_EARS');
       cut.appendChild(ears);
-      screen.appendChild(cut); persistent.set('rabbit_ears', cut);
-      if (!enabled) return;
+      screen.appendChild(cut); transients.add(cut);
       orb(cut);
-      // a short screen-only moment: the dialogue box steps aside so the whole head and the ears read, then returns
-      const app = el('app');
-      app.classList.add('cutin');
-      clearTimeout(app._cutin);
-      app._cutin = setTimeout(() => app.classList.remove('cutin'), 2300);
+      const app = el('app'), hand = persistent.get('hand_focus');
+      app.classList.add('cutin', 'player-reveal');
+      const finish = Playback.begin();
+      let frame = 0;
+      const start = performance.now(), ease = t => t * t * (3 - 2 * t);
+      const reset = () => {
+        cancelAnimationFrame(frame);
+        if (typeof Stage3D !== 'undefined') Stage3D?.playerReveal(0);
+        app.classList.remove('cutin', 'player-reveal'); app.style.removeProperty('--reveal');
+        if (hand) hand.style.opacity = '';
+        cut.remove(); transients.delete(cut); stopReveal = null; positionPanels(); finish();
+      };
+      stopReveal = reset;
+      const tick = now => {
+        const t = now - start;
+        const k = t < 1200 ? ease(Math.min(1, t / 1200)) : t < 2300 ? 1 : 1 - ease(Math.min(1, (t - 2300) / 1200));
+        app.style.setProperty('--reveal', k);
+        if (typeof Stage3D !== 'undefined') Stage3D?.playerReveal(k);
+        cut.style.opacity = Math.min(1, k * 2);
+        cut.style.transform = `translateY(${(1 - k) * 80}%)`;
+        if (hand) hand.style.opacity = 1 - Math.min(1, k * 2);
+        if (t >= 1200) cut.classList.add('ears-visible');
+        if (t >= EFFECT_TIMES.rabbit_ears) { reset(); return; }
+        frame = requestAnimationFrame(tick);
+      };
+      frame = requestAnimationFrame(tick);
     },
     title_flash() {
       if (!enabled) return;
@@ -235,7 +477,7 @@ const FX = (() => {
       request.classList.remove('hidden', 'show'); void request.offsetWidth;
       request.classList.add('show');
       clearTimeout(request._t);
-      request._t = setTimeout(() => request.classList.add('hidden'), 3200);
+      request._t = later(() => request.classList.add('hidden'), 3200);
     },
   };
 
@@ -244,32 +486,50 @@ const FX = (() => {
     const node = persistent.get(name);
     if (!node) return;
     persistent.delete(name);
+    if (name === 'scroll_focus' || node.classList.contains('study-cut')) { node.remove(); return; }
     if (!enabled) { node.remove(); return; }
     sound('peel');
     node.classList.add('peel');
-    setTimeout(() => node.remove(), 420);
+    transients.add(node);
+    later(() => { transients.delete(node); node.remove(); }, name === 'rabbit_ears' ? 500 : 420);
   }
 
   function clearAll() {
+    soundEpoch += 1;
+    stopReveal?.();
+    timers.forEach(clearTimeout); timers.clear();
+    transients.forEach(node => node.remove()); transients.clear();
     [...persistent.keys()].forEach(n => { persistent.get(n).remove(); persistent.delete(n); });
     clearTimeout(el('app')._cutin); el('app').classList.remove('cutin');
     head.replaceChildren(); request.classList.add('hidden');
+    chapter.classList.remove('on'); flashEl.classList.remove('on'); world.classList.remove('shake');
+    body.classList.remove('act-rise', 'act-recoil', 'act-sink', 'act-settle', 'act-turn');
   }
 
   return {
-    setEnabled(v) { enabled = v; },
+    setEnabled(v) {
+      Playback.setEnabled(v);
+      enabled = v;
+      if (!v) {
+        const names = snapshot();
+        clearAll();
+        names.forEach(name => EFFECTS[name]?.());
+      }
+    },
     setOutfit(o) { outfit = o; },
+    setCard(id) { card = id; positionHandPapers(); positionPanels(); },
     marks, act,
     line(node, stage) {
       currentStage = stage;
       const hay = `${node.cue || ''} ${node.text || ''}`;
       FX_BEATS.filter(b => b.stage === stage && hay.includes(b.match)).forEach(b => {
-        (b.off || []).forEach(off);
+        if (enabled && b.pause) Playback.hold(Math.max(0, ...(b.on || []).map(n => EFFECT_TIMES[n] || 0)));
         (b.on || []).forEach(n => {
           EFFECTS[n]?.();
-          sound(`fx_${n}`);
-          if (n === 'poof') sound('fx_poof_paper', { delay: 0.08 });
+          if (n !== 'poof') sound(`fx_${n}`);
         });
+        // poof takes ownership of the live preview before its persistent state is cleared.
+        (b.off || []).forEach(off);
       });
     },
     scene(tag, stage) {
@@ -278,10 +538,11 @@ const FX = (() => {
       const [num, title] = tag.split(' · ');
       chapterNum.textContent = num; chapterTitle.textContent = title || '';
       if (!enabled) return;
+      Playback.hold(1900);
       sound('chapter');
       chapter.classList.remove('on'); void chapter.offsetWidth; chapter.classList.add('on');
     },
-    snapshot: () => [...persistent.keys()],
+    snapshot,
     restore(names, stage) {
       currentStage = stage;
       const was = enabled; enabled = false;

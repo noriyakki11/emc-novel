@@ -69,7 +69,9 @@ async function start() {
     q.set('door', s);
     history.replaceState(null, '', `${location.pathname}?${q}`);
   } : () => {};
-  const waitForDoor = () => new Promise(ok => { doorGate = ok; doorPrompt.classList.remove('hidden'); note('waiting'); });
+  const waitForDoor = () => new Promise(ok => {
+    doorGate = ok; doorPrompt.classList.remove('hidden'); note('waiting'); Playback.refresh();
+  });
   function openDoor(by = 'press') {
     if (!doorGate) return false;
     note(`opened-by-${by}`);
@@ -78,6 +80,7 @@ async function start() {
     doorPrompt.classList.add('hidden');
     Sound.open();
     go();
+    Playback.refresh();
     return true;
   }
   doorPrompt.addEventListener('click', e => { e.stopPropagation(); openDoor('button'); });
@@ -102,6 +105,27 @@ async function start() {
   const tween = (ms, fn, easing = ease) => new Promise(ok => tweens.add({ t0: performance.now(), ms, fn, easing, ok }));
   const hold = ms => tween(ms, () => {});
   let instant = false, run = 0;
+  let finishMotion = null, arrivalBack = false;
+  function cancelMotion() {
+    run++;
+    for (const tw of tweens) tw.ok();
+    tweens.clear();
+    if (doorGate) {
+      const go = doorGate; doorGate = null;
+      doorPrompt.classList.add('hidden'); go();
+    }
+    if (finishMotion) { finishMotion(); finishMotion = null; }
+    Playback.refresh();
+  }
+  function trackMotion(work) {
+    const finish = Playback.begin();
+    const motionRun = run;
+    finishMotion = finish;
+    Promise.resolve().then(() => { if (motionRun === run) return work(); }).catch(e => console.warn('[3D] movement interrupted:', e)).finally(() => {
+      finish();
+      if (finishMotion === finish) finishMotion = null;
+    });
+  }
 
   // ---- state: camera, Jane's spot, card visibility ----------------------------------------------------------------------
   let place = null;
@@ -144,7 +168,7 @@ async function start() {
     return k => room.look(eye.getPoint(k), look.getPoint(k));
   }
 
-  async function arrive(id, back) {
+  async function arrive(id, back, welcome) {
     const my = ++run, p = PLACES[id], a = ARRIVE[p.cam];
     tweens.clear();
     if (instant) { settle(id, back ? 'work' : 'talk'); return; }
@@ -160,7 +184,8 @@ async function start() {
     if (!alive()) return;
     await tween(800, k => { fade.style.opacity = 1 - k; });   // the closed door, from outside
     if (!alive()) return;
-    await waitForDoor();                              // the hero opens it (the press also opens the sound)
+    if (welcome) await hold(300);                     // stage 4: Jane opens the door from inside
+    else await waitForDoor();                        // the hero opens it (the press also opens the sound)
     if (!alive()) return;
     sfx('door_open');
     sfx('door_creak', { delay: 0.55 });
@@ -226,25 +251,41 @@ async function start() {
   return {
     active: true,
     // how: 'arrive' (stage start: door opens, walk in), 'walk' (a move inside the house), 'instant' (rewind, setup)
-    show(id, how = 'walk', { back = false } = {}) {
+    show(id, how = 'walk', { back = false, welcome = false } = {}) {
       if (!PLACES[id]) return false;
       const prev = place;
+      cancelMotion();
       place = id;
-      if (how === 'arrive') arrive(id, back);
-      else if (how === 'walk' && prev && prev !== id) walkTo(id);
-      else { run++; tweens.clear(); settle(id); }
+      arrivalBack = how === 'arrive' && back;
+      if (how === 'arrive') trackMotion(() => arrive(id, back, welcome));
+      else if (how === 'walk' && prev && prev !== id) trackMotion(() => walkTo(id));
+      else settle(id);
       return true;
     },
     // Jane turns from the bench to the hero and steps up to talking distance
     turn() {
       if (!place) return;
+      arrivalBack = false;
       const cam = PLACES[place].cam, j0 = jane.clone(), j1 = spot(cam, 'talk');
       if (instant) { jane.copy(j1); room.invalidate(); return; }
       sfx('turn');
       sfx('step', { delay: 0.3, volume: 0.7 });
-      tween(520, k => { jane.lerpVectors(j0, j1, k); janeBob = Math.sin(k * Math.PI) * 0.04; });
+      trackMotion(() => tween(520, k => { jane.lerpVectors(j0, j1, k); janeBob = Math.sin(k * Math.PI) * 0.04; }));
     },
-    setInstant(v) { instant = v; },
+    // FX owns the reveal's timing/cancellation; move the actual camera behind the player's original eye.
+    playerReveal(k) {
+      if (!place) return;
+      const q = pose(PLACES[place].cam);
+      const back = q.eye.clone().sub(q.target); back.y = 0; back.normalize();
+      const eye = q.eye.clone().addScaledVector(back, k * 1.05);
+      eye.y += k * .08;
+      room.look(eye, q.target);
+    },
+    setInstant(v) {
+      instant = v;
+      if (v) { cancelMotion(); if (place) settle(place, arrivalBack ? 'work' : 'talk'); }
+    },
+    waitingForDoor: () => Boolean(doorGate),
     // a press while the door is waiting opens it (and is not a dialogue advance)
     consumeInput: () => openDoor('next'),
   };

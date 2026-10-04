@@ -45,6 +45,7 @@ const ui = {
   dialogueBox: $('dialogueBox'), rewindBtn: $('rewindBtn'), choiceCount: $('choiceCount'), hint: $('hint'),
   emotionTag: $('emotionTag'), cue: $('cue'), cueBox: $('cueBox'), actingToggle: $('actingToggle'),
   announcement: $('announcement'), locationLabel: $('locationLabel'), reviewChip: $('reviewChip'),
+  hideDialogueBtn: $('hideDialogueBtn'), restoreDialogueBtn: $('restoreDialogueBtn'),
 };
 
 let timeline = [], pointer = 0, checkpoints = [];
@@ -54,6 +55,17 @@ let shownBg = null, shownCard = null, cardNote = '';
 let fullText = '', typing = false, typingTimer = null, typingEpoch = 0;
 const motionPreference = window.matchMedia('(prefers-reduced-motion: reduce)');
 let actingEnabled = !motionPreference.matches;
+let dialogueHidden = false;
+
+function setDialogueHidden(hidden) {
+  dialogueHidden = hidden && started;
+  ui.app.classList.toggle('ui-hidden', dialogueHidden);
+  ui.hideDialogueBtn.setAttribute('aria-pressed', String(dialogueHidden));
+  ui.restoreDialogueBtn.classList.toggle('hidden', !dialogueHidden);
+  updateButtons();
+  if (dialogueHidden) ui.restoreDialogueBtn.focus({ preventScroll: true });
+  else if (started) (Playback.busy ? ui.app : ui.dialogueBox).focus({ preventScroll: true });
+}
 
 const cardUrl = id => `${CARD_ROOT}/${id.split('_')[0]}/${id}.${IMG_EXT}`;
 const bgUrl = id => `${BG_ROOT}/${id}.${IMG_EXT}`;
@@ -96,6 +108,7 @@ function showBackground(id, how = 'walk', opts = {}) {
 let cardToken = 0;
 function showCard(id, note = '') {
   cardNote = note;
+  FX.setCard(id);
   if (id === shownCard) { updateReviewChip(); return; }
   // from her back to a front card: a paper-doll turn, and in the 3D room she steps up to the hero
   if (shownCard && shownCard.includes(BACK_CARD) && !id.includes(BACK_CARD)) {
@@ -148,7 +161,7 @@ function stageScene(node) {
   FX.scene(node.tag, currentScene);
   // the first visit opens on Jane at her bench with her back to the door; she turns on her first line
   const back = n === 1 && CARDS[outfitOf(1)].includes(BACK_CARD);
-  if (n) showBackground(STAGES[currentScene].bg, 'arrive', { back });
+  if (n) showBackground(STAGES[currentScene].bg, 'arrive', { back, welcome: n === 4 });
   if (back) { showCard(`${outfitOf(1)}_${BACK_CARD}`, '뒷모습'); return; }
   const [id, note] = expressionCard(mood);
   showCard(id, note);
@@ -182,18 +195,36 @@ function updateEmotionView(node) {
 function cancelTyping() { typingEpoch += 1; clearTimeout(typingTimer); typingTimer = null; typing = false; }
 
 function updateButtons() {
+  const presenting = Playback.busy;
+  const doorReady = Boolean(Stage3D && Stage3D.waitingForDoor());
+  const autoHidden = started && presenting;
+  const wasAutoHidden = ui.app.classList.contains('dialogue-auto-hidden');
+  ui.app.classList.toggle('presenting', presenting);
+  ui.app.classList.toggle('dialogue-auto-hidden', autoHidden);
+  ui.dialogueBox.setAttribute('aria-hidden', String(dialogueHidden || autoHidden));
+  // Keep keyboard input available while the dialogue is temporarily off screen.
+  if (autoHidden && ui.dialogueBox.contains(document.activeElement)) ui.app.focus({ preventScroll: true });
+  else if (wasAutoHidden && !autoHidden && !dialogueHidden && document.activeElement === ui.app) {
+    ui.dialogueBox.focus({ preventScroll: true });
+  }
+  ui.hideDialogueBtn.disabled = !started;
   ui.choiceCount.textContent = `선택 기록 ${state.choices.length} / ${CHOICE_COUNT}`;
-  ui.rewindBtn.disabled = checkpoints.length === 0;
+  ui.rewindBtn.disabled = checkpoints.length === 0 || presenting;
+  ui.choicePanel.querySelectorAll('button').forEach(btn => { btn.disabled = presenting || dialogueHidden; });
   ui.actingToggle.textContent = actingEnabled ? '연출 켜짐' : '즉시 표시';
   ui.actingToggle.setAttribute('aria-pressed', String(actingEnabled));
   ui.app.classList.toggle('instant', !actingEnabled);
-  if (waitingChoice) { ui.nextBtn.disabled = true; ui.nextBtn.textContent = '선택 대기'; }
+  if (doorReady) { ui.nextBtn.disabled = false; ui.nextBtn.textContent = '문을 연다'; }
+  else if (presenting) { ui.nextBtn.disabled = true; ui.nextBtn.textContent = '연출 중…'; }
+  else if (waitingChoice) { ui.nextBtn.disabled = true; ui.nextBtn.textContent = '선택 대기'; }
   else {
     // in game mode the last line leads to the end card, so the button stays live as '마치기'
     ui.nextBtn.disabled = finished && !typing && !GAME_MODE;
     ui.nextBtn.textContent = typing ? '문장 펼치기' : finished ? (GAME_MODE ? '마치기' : '완료') : '다음';
   }
-  ui.hint.textContent = waitingChoice ? '선택지 클릭 · 숫자 1–3' : typing ? '클릭하면 문장 전체 표시'
+  ui.hint.textContent = doorReady ? '문을 열면 이야기가 시작됩니다'
+    : presenting ? '연출이 끝나면 진행할 수 있어요'
+    : waitingChoice ? '선택지 클릭 · 숫자 1–3' : typing ? '클릭하면 문장 전체 표시'
     : finished ? (GAME_MODE ? '클릭 · Space · Enter로 마치기' : '선택 다시 · 다른 반응 확인') : '클릭 · Space · Enter로 진행';
 }
 
@@ -212,6 +243,7 @@ function renderText(text, node) {
   ui.text.textContent = ''; typing = true; updateButtons();
   const step = () => {
     if (epoch !== typingEpoch) return;
+    if (Playback.busy || dialogueHidden) { typingTimer = setTimeout(step, 50); return; }
     if (i >= chars.length) { revealText(); return; }
     const ch = chars[i++];
     ui.text.textContent = chars.slice(0, i).join('');
@@ -257,10 +289,11 @@ function renderChoices(node) {
   node.options.forEach((opt, index) => {
     const btn = document.createElement('button');
     btn.type = 'button'; btn.className = 'choice-button';
+    btn.disabled = Playback.busy || dialogueHidden;
     btn.innerHTML = `<span class="choice-number">${String(index + 1).padStart(2, '0')}</span>`;
     btn.append(document.createTextNode(opt.label));
     btn.addEventListener('click', () => {
-      if (!waitingChoice || timeline[pointer] !== node) return;
+      if (!waitingChoice || timeline[pointer] !== node || Playback.busy || dialogueHidden) return;
       checkpoints.push({
         timeline: timeline.slice(), pointer, state: JSON.parse(JSON.stringify(state)),
         scene: currentScene, mood, bg: shownBg, card: shownCard, tag: ui.sceneTag.textContent, fx: FX.snapshot(),
@@ -280,8 +313,10 @@ function renderChoices(node) {
 }
 
 function next() {
-  if (!started || waitingChoice) return;
+  if (!started) return;
+  if (dialogueHidden) { setDialogueHidden(false); return; }
   if (Stage3D && Stage3D.consumeInput()) return;   // the first press at a stage start opens the door
+  if (Playback.busy || waitingChoice) return;
   if (typing) { revealText(); return; }
   if (finished) { if (GAME_MODE) $('endCard').classList.remove('hidden'); return; }
   Sound.play('ui_next');
@@ -291,6 +326,7 @@ function next() {
 
 function startGame() {
   cancelTyping();
+  Playback.reset();
   Object.assign(state, initialState());
   checkpoints = []; timeline = buildTimeline(); pointer = 0;
   currentScene = 1; mood = SCENE_MOODS[1];
@@ -304,15 +340,18 @@ function startGame() {
   }
   FX.clearAll();
   waitingChoice = false; started = true; finished = false;
+  setDialogueHidden(false);
   ui.startModal.classList.add('hidden');
   renderCurrent();
-  ui.dialogueBox.focus({ preventScroll: true });
+  (Playback.busy ? ui.app : ui.dialogueBox).focus({ preventScroll: true });
 }
 
 function rewindChoice() {
+  if (Playback.busy || dialogueHidden) return;
   const cp = checkpoints.pop();
   if (!cp) return;
   cancelTyping();
+  Playback.reset();
   Object.assign(state, initialState(), cp.state);
   timeline = cp.timeline.slice(); pointer = cp.pointer;
   currentScene = cp.scene; mood = cp.mood;
@@ -325,7 +364,13 @@ function rewindChoice() {
   renderCurrent();
 }
 
+Playback.onChange(updateButtons);
 ui.nextBtn.addEventListener('click', next);
+ui.hideDialogueBtn.addEventListener('click', () => setDialogueHidden(true));
+ui.restoreDialogueBtn.addEventListener('click', () => setDialogueHidden(false));
+ui.app.addEventListener('click', e => {
+  if (dialogueHidden && !e.target.closest('button')) setDialogueHidden(false);
+});
 ui.dialogueBox.addEventListener('click', e => { if (!e.target.closest('button')) next(); });
 ui.startBtn.addEventListener('click', startGame);
 ui.restartBtn.addEventListener('click', startGame);
@@ -345,9 +390,13 @@ ui.actingToggle.addEventListener('click', () => {
 document.addEventListener('keydown', e => {
   if (e.repeat || e.altKey || e.ctrlKey || e.metaKey) return;
   const k = e.key.toLowerCase();
-  if (k === 'h') { ui.app.classList.toggle('ui-hidden'); return; }
+  if (k === 'h') { e.preventDefault(); setDialogueHidden(!dialogueHidden); return; }
   if (k === 'r') { ui.reviewChip.classList.toggle('hidden'); return; }
   if (!started) return;
+  if (dialogueHidden) {
+    if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); setDialogueHidden(false); }
+    return;
+  }
   if (waitingChoice && /^[1-3]$/.test(e.key)) { e.preventDefault(); ui.choicePanel.querySelectorAll('button')[Number(e.key) - 1]?.click(); return; }
   if (e.target.closest?.('button, input, textarea, select, a')) return;
   if (e.key === ' ' || e.key === 'Enter') { e.preventDefault(); next(); }

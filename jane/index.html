@@ -4,11 +4,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>제인의 주문서 실험록 · 카드판</title>
-  <link rel="stylesheet" href="styles.css?v=42652eeb" />
-  <link rel="stylesheet" href="fx.css?v=a74a2ead" />
+  <link rel="stylesheet" href="styles.css?v=5cdf9ec5" />
+  <link rel="stylesheet" href="fx.css?v=d3fbc1db" />
 </head>
 <body>
-  <div id="app" class="app" data-scene="1">
+  <div id="app" class="app" data-scene="1" tabindex="-1">
     <div id="world" class="world" aria-hidden="true">
       <div id="bgA" class="background shown"></div>
       <div id="bgB" class="background"></div>
@@ -37,12 +37,14 @@
         <span id="choiceCount" class="choice-count">선택 기록 0 / 5</span>
         <button id="soundToggle" class="secondary" type="button" aria-pressed="true">소리 켜짐</button>
         <button id="actingToggle" class="secondary" type="button" aria-pressed="true">연출 켜짐</button>
+        <button id="hideDialogueBtn" class="secondary" type="button" aria-controls="dialogueBox" aria-pressed="false" disabled>대화 가리기</button>
         <button id="rewindBtn" class="secondary" type="button" disabled>선택 다시</button>
         <button id="restartBtn" class="secondary" type="button">처음부터</button>
       </div>
     </div>
     <div id="locationLabel" class="location-label"></div>
     <div id="reviewChip" class="review-chip hidden"></div>
+    <button id="restoreDialogueBtn" class="secondary restore-dialogue hidden" type="button" aria-controls="dialogueBox">대화 보기 · H</button>
 
     <div id="dialogueBox" class="dialogue-box" tabindex="-1" aria-label="대화창">
       <div class="speaker-row">
@@ -57,7 +59,7 @@
       <div id="announcement" class="sr-only" aria-live="polite" aria-atomic="true"></div>
       <div id="choicePanel" class="choice-panel hidden" role="group"></div>
       <div class="bottom-row">
-        <span class="keys">H 화면만 보기 · R 검수 표시</span>
+        <span class="keys">H 대화 가리기 / 보기 · R 검수 표시</span>
         <button id="nextBtn" class="primary" type="button">다음</button>
       </div>
     </div>
@@ -74,7 +76,8 @@
         <ul>
           <li>1·2단계 기본 복장, 3단계 밤샘 후드, 4·5단계 연금술사 복장.</li>
           <li>클릭·Space·Enter: 문장 펼치기 / 다음. 숫자 1~3: 선택. ‘선택 다시’로 다른 반응을 볼 수 있습니다.</li>
-          <li>검수용: H = 대화창 숨기고 그림만 보기, R = 지금 띄운 카드·배경 이름 표시.</li>
+          <li>입장과 실험 같은 핵심 장면에서는 잠시 대화를 멈춥니다. 대화 가리기 버튼이나 H 키로 그림만 볼 수 있습니다.</li>
+          <li>R = 지금 띄운 카드·배경 이름 표시.</li>
         </ul>
         <button id="startBtn" class="primary big" type="button">시작하기</button>
       </div>
@@ -89,13 +92,14 @@
       setTimeout(() => { window.__stage3dGaveUp = true; resolve(null); }, 15000);
     });
   </script>
-  <script src="emotions.js?v=3db33f7d"></script>
-  <script src="story.js?v=7b31b113"></script>
-  <script src="staging.js?v=74ad664e"></script>
-  <script src="sound.js?v=acc841ea"></script>
-  <script src="fx.js?v=c247f28b"></script>
-  <script src="app.js?v=9aaa0163"></script>
+  <script src="emotions.js?v=776242b4"></script>
+  <script src="story.js?v=7809ab30"></script>
+  <script src="staging.js?v=5c1b0aea"></script>
+  <script src="sound.js?v=d559c42e"></script>
+  <script src="playback.js?v=1df4e8b6"></script>
+  <script src="fx.js?v=7c7b82de"></script>
+  <script src="app.js?v=b15ad111"></script>
   <script type="importmap">{ "imports": { "three": "./3d/vendor/three/build/three.module.js" } }</script>
-  <script type="module" src="stage3d.js?v=142a0b34"></script>
+  <script type="module" src="stage3d.js?v=75e84315"></script>
 </body>
 </html>

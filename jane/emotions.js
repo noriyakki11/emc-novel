@@ -30,7 +30,7 @@ const SCENE_MOODS = Object.freeze({
 });
 
 const CHOICE_CUES = Object.freeze({
-  opening: '첫인사를 마친 제인이 반응을 기다린다. 같은 상황에도 말투에 따라 관계의 결은 달라질 수 있다.',
+  opening: '빛이 꺼지고 종이가 양손에 붙은 채, 제인이 당신의 반응을 살핀다.',
   feedback: '새 결과물을 펼쳐둔 제인이 가장 먼저 당신의 반응을 살핀다.',
   research: '밤샘 실험 직후. 피곤함과 부끄러움보다 연구 이야기에 더 몰두해 있다.',
   philosophy: '처음으로 자기 방식의 실험을 꺼내 보인 제인이 말을 기다린다.',

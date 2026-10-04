@@ -1,17 +1,19 @@
 'use strict';
 
-// 효과음. 소리 파일은 Kenney 오디오 팩(CC0: RPG Audio, Interface Sounds, Impact Sounds, Music Jingles)에서 골라
-// assets/sfx/에 둔 사본이고, 제인의 말소리(타자 소리 같은 짧은 '삐')는 여기서 직접 만든다.
+// 주문서 결과음은 로컬 KMS Sound.wz/Game.img의 EnchantSuccess / EnchantFailure 원음이다.
+// 그 외 효과음은 Kenney CC0 팩의 사본이며, 제인의 짧은 말소리는 여기서 직접 만든다.
 // 브라우저는 페이지를 한 번 누르기 전에는 소리를 막으므로, 첫 클릭·키 입력에서 소리를 연다(오프닝은 '문을 연다' 클릭).
 const SFX_ROOT = 'assets/sfx';
-// name: [files (one is picked at random), volume]
+// name: [files (one is picked at random), volume, optional pitch variation (0 preserves the original)]
 const SFX = Object.freeze({
+  fx_scroll_success: [['maple_scroll_success.mp3'], 0.7, 0],
+  fx_poof: [['maple_scroll_failure.mp3'], 0.7, 0],
   door_open: [['door_open'], 0.7], door_creak: [['door_creak'], 0.45],
   step: [['step_0', 'step_1', 'step_2', 'step_3', 'step_4'], 0.32],
   turn: [['turn'], 0.55], chapter: [['chapter'], 0.35],
   // scene effects (fx.js effect names)
   fx_flicker: [['ding_small'], 0.4], fx_glyph: [['rise'], 0.4], fx_broad_glow: [['rise_big'], 0.45],
-  fx_poof: [['poof'], 0.7], fx_poof_paper: [['paper_scatter'], 0.5], fx_paper_hands: [['paper_stick'], 0.5],
+  fx_poof_paper: [['paper_scatter'], 0.25], fx_paper_hands: [['paper_stick'], 0.5],
   fx_forehead_paper: [['paper_stick'], 0.6], fx_rabbit_ears: [['chime'], 0.5], fx_title_flash: [['title_jingle'], 0.45],
   fx_sparkles_screen: [['sparkle'], 0.35], fx_request: [['paper_open', 'request'], 0.5], fx_shake: [['thud'], 0.55],
   peel: [['paper_rustle'], 0.35],
@@ -37,7 +39,7 @@ const Sound = (() => {
 
   function load(file) {
     if (buffers.has(file)) return buffers.get(file);
-    const p = fetch(`${SFX_ROOT}/${file}.ogg`)
+    const p = fetch(`${SFX_ROOT}/${file.includes('.') ? file : file + '.ogg'}`)
       .then(r => { if (!r.ok) throw new Error(`${r.status} ${file}`); return r.arrayBuffer(); })
       .then(b => new Promise((ok, fail) => ctx.decodeAudioData(b, ok, fail)))
       .catch(() => null);
@@ -63,15 +65,15 @@ const Sound = (() => {
   }
   ['pointerdown', 'keydown'].forEach(t => addEventListener(t, open, { capture: true, passive: true }));
 
-  async function play(name, { volume = 1, rate = 1, delay = 0 } = {}) {
+  async function play(name, { volume = 1, rate = 1, delay = 0, isCurrent = () => true } = {}) {
     const spec = SFX[name];
     if (!spec || !ctx || muted) return;
-    const [files, vol] = spec;
+    const [files, vol, pitchVariation = 0.04] = spec;
     const buf = await load(files[Math.floor(Math.random() * files.length)]);
-    if (!buf) return;
+    if (!buf || muted || !isCurrent()) return;
     const src = ctx.createBufferSource();
     src.buffer = buf;
-    src.playbackRate.value = rate * (0.96 + Math.random() * 0.08);
+    src.playbackRate.value = rate * (1 - pitchVariation + Math.random() * pitchVariation * 2);
     const g = ctx.createGain();
     g.gain.value = vol * volume;
     src.connect(g).connect(master);
