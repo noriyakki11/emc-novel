@@ -25,8 +25,8 @@ const PLACES = {
 };
 // The arrival: the closed door seen from outside, a step back so the whole door and its frame are in the shot (the
 // outer face is dressed in the bake: frame, window, knob), then through the doorway to the place.
-// (2.15 m from the wall: even a very wide window keeps the wall's left end, x -4.21, out of the shot)
-const DOOR_VIEW = { eye: [-1.95, -5.6, 1.32], look: [-2.25, -3.4, 1.1] };
+// Start on the harbor paving: the sea and blue-roofed houses remain beside the doorway until we approach it.
+const DOOR_VIEW = { eye: [-5.7, -8.2, 1.48], look: [-3.65, -3.45, 1.45] };
 const ARRIVE = {
   bench: { eye: [DOOR_VIEW.eye, [-2.4, -4.3, 1.32], [-2.4, -3.38, 1.32], [-2.05, -2.3, 1.32]],
     look: [DOOR_VIEW.look, [-2.4, -2.6, 1.2], [-2.3, -1.0, 1.25], [-1.0, 1.2, 1.2]], ms: 5600 },
@@ -50,7 +50,7 @@ async function start() {
   const actor = document.getElementById('actor');
   const app = document.getElementById('app');
   const { createRoom } = await import(`${root}/room3d.js${version ? `?v=${version}` : ''}`);
-  const room = await createRoom({ container: world, assets: `${root}/out`, lightings: lightingsToLoad(), version });
+  const room = await createRoom({ container: world, assets: `${root}/out`, exteriorAssets: `${root}/out/harbor`, lightings: lightingsToLoad(), version, cleanLines: true, smoothLines: true });
   const { THREE, b2t } = room;
 
   const fade = document.createElement('div');

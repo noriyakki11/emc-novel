@@ -39,7 +39,7 @@ const passMaterial = (flag, body) => new THREE.ShaderMaterial({
 });
 
 // version: appended to asset URLs (?v=) so a new bake is not served from the browser's cache
-export async function createRoom({ container, assets, lightings = ['day'], dim = 0.86, saturate = 0.95, version = '', onStep = () => {} }) {
+export async function createRoom({ container, assets, exteriorAssets = '', lightings = ['day'], dim = 0.86, saturate = 0.95, version = '', cleanLines = false, smoothLines = false, onStep = () => {} }) {
   const v = version ? `?v=${version}` : '';
   // without a usable GPU (software WebGL) this throws and the novel keeps its 2D background renders
   const renderer = new THREE.WebGLRenderer({ antialias: true, failIfMajorPerformanceCaveat: true });
@@ -87,36 +87,72 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   room.traverse(o => {
     if (!o.isMesh) return;
     o.material = roomMaterial;
+    o.userData.surface = roomMaterial;
     o.userData.lines = /outlined|door/.test(`${o.name} ${o.parent?.name || ''}`) ? 'line' : 'plain';
     meshes.push(o);
   });
   scene.add(room);
   const door = room.getObjectByName('door');
+  // The harbor uses its own small atlas; dressing the doorway leaves the interior UVs untouched.
+  const sets = [{ atlases, material: roomMaterial, loadAtlas }];
+  if (exteriorAssets) {
+    onStep('항구 입구');
+    const exterior = await retry(() => new GLTFLoader().loadAsync(`${exteriorAssets}/workshop.glb${v}`));
+    const url = l => `${exteriorAssets}/workshop_${l}.webp${v}`;
+    const load = l => retry(i => loadPicture(i > 1 ? `${url(l)}${v ? '&' : '?'}retry=${i}` : url(l), false));
+    const maps = {};
+    for (const l of lightings) maps[l] = await load(l);
+    const material = flatMaterial(renderer, maps[lighting], { dim: 1, saturate });
+    sets.push({ atlases: maps, material, loadAtlas: load });
+    exterior.scene.name = 'harbor-exterior';
+    exterior.scene.traverse(o => {
+      if (!o.isMesh) return;
+      o.material = o.userData.surface = material;
+      o.userData.lines = /outlined/.test(`${o.name} ${o.parent?.name || ''}`) ? 'line' : 'plain';
+      meshes.push(o);
+    });
+    scene.add(exterior.scene);
+  }
+  let requestedLighting = lighting;
+  const applyLighting = l => {
+    if (requestedLighting !== l) return;
+    if (l !== lighting) dirty = true;
+    lighting = l;
+    for (const set of sets) set.material.uniforms.map.value = set.atlases[l];
+  };
 
   // ---- line pass ------------------------------------------------------------------------------------------------------
-  const normalTarget = new THREE.WebGLRenderTarget(2, 2, { depthTexture: new THREE.DepthTexture(2, 2) });
+  // Jane uses restrained interior contours: nearest flags cannot leak across silhouettes, and bevel
+  // creases are already described by the baked shading. Keep the legacy style for other room clients.
+  const normalTarget = new THREE.WebGLRenderTarget(2, 2, { depthTexture: new THREE.DepthTexture(2, 2),
+    minFilter: cleanLines ? THREE.NearestFilter : THREE.LinearFilter, magFilter: cleanLines ? THREE.NearestFilter : THREE.LinearFilter });
   const idTarget = new THREE.WebGLRenderTarget(2, 2, { minFilter: THREE.NearestFilter, magFilter: THREE.NearestFilter });
+  // Object IDs must stay discrete. Supersample the detection, then filter only its alpha mask;
+  // filtering the IDs themselves creates false boundaries and MSAA on the canvas misses this pass.
+  const outlineTarget = smoothLines ? new THREE.WebGLRenderTarget(2, 2, {
+    minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter, depthBuffer: false,
+  }) : null;
   const NORMAL = 'gl_FragColor = vec4(normalize(vN) * 0.5 + 0.5, flag);', ID = 'gl_FragColor = vec4(vId.rg, 0.0, flag);';
   const passes = {
     normal: { line: passMaterial(1, NORMAL), plain: passMaterial(0, NORMAL) },
     id: { line: passMaterial(1, ID), plain: passMaterial(0, ID) },
   };
   const edgeMaterial = new THREE.ShaderMaterial({
-    transparent: true, depthTest: false, depthWrite: false,
+    transparent: !smoothLines, depthTest: false, depthWrite: false,
     uniforms: {
       tNormal: { value: normalTarget.texture }, tDepth: { value: normalTarget.depthTexture }, tId: { value: idTarget.texture },
       texel: { value: new THREE.Vector2() }, width: { value: 2 }, near: { value: camera.near }, far: { value: camera.far },
-      lineColor: { value: LINE },
+      lineColor: { value: LINE }, cleanLines: { value: cleanLines },
     },
     vertexShader: 'varying vec2 vUv; void main() { vUv = uv; gl_Position = vec4(position.xy, 0.0, 1.0); }',
     fragmentShader: `
       uniform sampler2D tNormal; uniform sampler2D tDepth; uniform sampler2D tId; uniform vec2 texel; uniform float width;
-      uniform float near; uniform float far; uniform vec3 lineColor; varying vec2 vUv;
+      uniform float near; uniform float far; uniform vec3 lineColor; uniform bool cleanLines; varying vec2 vUv;
       float depthAt(vec2 uv) { float z = texture2D(tDepth, uv).x * 2.0 - 1.0; return 2.0 * near * far / (far + near - z * (far - near)); }
       float idAt(vec2 uv) { vec4 c = texture2D(tId, uv); return floor(c.r * 255.0 + 0.5) + 256.0 * floor(c.g * 255.0 + 0.5); }
       void main() {
         vec4 nc = texture2D(tNormal, vUv);
-        if (nc.a < 0.5) { gl_FragColor = vec4(0.0); return; }
+        if (nc.a < 0.5 || (cleanLines && texture2D(tId, vUv).a < 0.5)) { gl_FragColor = vec4(0.0); return; }
         float dc = depthAt(vUv), ic = idAt(vUv); vec3 n0 = nc.xyz * 2.0 - 1.0;
         float edge = 0.0;
         for (int i = 0; i < 8; i++) {
@@ -124,17 +160,32 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
           vec2 uv = vUv + vec2(cos(a), sin(a)) * texel * width;
           float dn = depthAt(uv);
           if (idAt(uv) != ic) {
-            if (dn > dc * 0.995) edge += 1.0;
+            if (dn > dc * (cleanLines ? 0.9998 : 0.995)) edge += 1.0;
           } else {
             if ((dn - dc) / dc > 0.12) edge += 1.0;
-            if (dot(n0, texture2D(tNormal, uv).xyz * 2.0 - 1.0) < 0.69) edge += 1.0;
+            if (!cleanLines && dot(n0, texture2D(tNormal, uv).xyz * 2.0 - 1.0) < 0.69) edge += 1.0;
           }
         }
-        gl_FragColor = vec4(lineColor, clamp(edge * 0.5, 0.0, 1.0));
+        gl_FragColor = vec4(lineColor, clamp(edge * (cleanLines ? 0.25 : 0.5), 0.0, cleanLines ? 0.78 : 1.0));
       }`,
   });
   const edgeScene = new THREE.Scene();
   edgeScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), edgeMaterial));
+  const resolveScene = smoothLines ? new THREE.Scene() : null;
+  const resolveMaterial = smoothLines ? new THREE.ShaderMaterial({
+    transparent: true, depthTest: false, depthWrite: false,
+    uniforms: { tEdges: { value: outlineTarget.texture }, offset: { value: new THREE.Vector2() }, lineColor: { value: LINE } },
+    vertexShader: edgeMaterial.vertexShader,
+    fragmentShader: `uniform sampler2D tEdges; uniform vec2 offset; uniform vec3 lineColor; varying vec2 vUv;
+      void main() {
+        float a = texture2D(tEdges, vUv + offset).a
+                + texture2D(tEdges, vUv - offset).a
+                + texture2D(tEdges, vUv + vec2(offset.x, -offset.y)).a
+                + texture2D(tEdges, vUv + vec2(-offset.x, offset.y)).a;
+        gl_FragColor = vec4(lineColor, a * 0.25);
+      }`,
+  }) : null;
+  if (resolveScene) resolveScene.add(new THREE.Mesh(new THREE.PlaneGeometry(2, 2), resolveMaterial));
   const flatCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
   // drawn last, depth-tested against the room but outside the line pass (a character card standing in the room)
   const overlay = new THREE.Scene();
@@ -150,10 +201,17 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
     viewW = w; viewH = h;
     renderer.setSize(w, h, false);
     const pw = Math.round(w * renderer.getPixelRatio()), ph = Math.round(h * renderer.getPixelRatio());
-    normalTarget.setSize(pw, ph);
-    idTarget.setSize(pw, ph);
-    edgeMaterial.uniforms.texel.value.set(1 / pw, 1 / ph);
-    edgeMaterial.uniforms.width.value = Math.max(1, 1.9 * ph / 900);   // Freestyle 1.85-2.25 px at 1600x900
+    // Two outline samples per CSS pixel, with no extra supersampling on Retina screens.
+    // Bound the extra GPU work for large windows; the ordinary room/card render stays native.
+    const scale = smoothLines ? Math.max(1, Math.min(2 / renderer.getPixelRatio(),
+      Math.sqrt(6_000_000 / (pw * ph)), renderer.capabilities.maxTextureSize / Math.max(pw, ph))) : 1;
+    const lw = Math.round(pw * scale), lh = Math.round(ph * scale);
+    normalTarget.setSize(lw, lh);
+    idTarget.setSize(lw, lh);
+    outlineTarget?.setSize(lw, lh);
+    resolveMaterial?.uniforms.offset.value.set(0.25 / pw, 0.25 / ph);
+    edgeMaterial.uniforms.texel.value.set(1 / lw, 1 / lh);
+    edgeMaterial.uniforms.width.value = Math.max(1, (cleanLines ? 1.3 : 1.9) * ph / 900) * scale;
     applyLens();
     dirty = true;
   }
@@ -166,11 +224,16 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
       renderer.setClearColor(0x000000, 0); renderer.clear();
       renderer.render(scene, camera);
     }
-    meshes.forEach(o => { o.material = roomMaterial; });
+    meshes.forEach(o => { o.material = o.userData.surface; });
+    if (outlineTarget) {
+      renderer.setRenderTarget(outlineTarget);
+      renderer.setClearColor(0x000000, 0); renderer.clear();
+      renderer.render(edgeScene, flatCamera);
+    }
     renderer.setRenderTarget(null);
     renderer.setClearColor(SKY[lighting] ?? SKY.day, 1); renderer.clear();
     renderer.render(scene, camera);
-    renderer.render(edgeScene, flatCamera);
+    renderer.render(resolveScene || edgeScene, flatCamera);
     renderer.render(overlay, camera);
   }
 
@@ -178,16 +241,20 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
   // first frame, this froze the start of the opening for about 0.3 s (and the first night frame for 0.2 s).
   // Call after resize() and after making the cards, so their shaders and the line targets are ready too.
   async function prepare() {
-    Object.values(atlases).forEach(t => renderer.initTexture(t));
+    sets.forEach(set => Object.values(set.atlases).forEach(t => renderer.initTexture(t)));
     const jobs = [];
     for (const [pass, target] of [['normal', normalTarget], ['id', idTarget]]) {
       meshes.forEach(o => { o.material = passes[pass][o.userData.lines]; });
       renderer.setRenderTarget(target);   // a shader drawn into a target differs from one drawn on the page
       jobs.push(renderer.compileAsync(scene, camera));
     }
-    meshes.forEach(o => { o.material = roomMaterial; });
+    meshes.forEach(o => { o.material = o.userData.surface; });
+    if (outlineTarget) {
+      renderer.setRenderTarget(outlineTarget);
+      jobs.push(renderer.compileAsync(edgeScene, flatCamera));
+    }
     renderer.setRenderTarget(null);
-    jobs.push(renderer.compileAsync(scene, camera), renderer.compileAsync(edgeScene, flatCamera),
+    jobs.push(renderer.compileAsync(scene, camera), renderer.compileAsync(resolveScene || edgeScene, flatCamera),
       renderer.compileAsync(overlay, camera));
     await Promise.all(jobs);   // the GPU driver compiles in the background where it can
     render();
@@ -268,16 +335,20 @@ export async function createRoom({ container, assets, lightings = ['day'], dim =
     setLens(mm) { if (mm !== lens) { lens = mm; applyLens(); dirty = true; } },
     // a lighting not loaded up front is fetched now; the room keeps the current one until it is ready
     setLighting(l) {
-      if (atlases[l]) {
-        if (l !== lighting || roomMaterial.uniforms.map.value !== atlases[l]) dirty = true;
-        lighting = l; roomMaterial.uniforms.map.value = atlases[l];
+      if (!SKY[l] && !sets.every(set => set.atlases[l])) return;
+      requestedLighting = l;
+      if (sets.every(set => set.atlases[l])) {
+        applyLighting(l);
         return;
       }
-      if (!SKY[l] || pending[l]) return;
-      pending[l] = loadAtlas(l).then(t => {
-        atlases[l] = t;
-        renderer.initTexture(t);
-        lighting = l; roomMaterial.uniforms.map.value = t; dirty = true;
+      if (pending[l]) return;
+      pending[l] = Promise.all(sets.map(async set => {
+        if (!set.atlases[l]) {
+          const t = await set.loadAtlas(l);
+          renderer.initTexture(t); set.atlases[l] = t;
+        }
+      })).then(() => {
+        applyLighting(l);
       }, e => { delete pending[l]; console.warn('[3D] lighting failed:', l, e); });
     },
     get lighting() { return lighting; },
