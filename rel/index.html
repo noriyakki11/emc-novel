@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Extreme Monster Carnival · 인연 미리보기</title>
+  <link rel="stylesheet" href="rel.css?v=ae03cb0a" />
+</head>
+<body>
+  <div id="app" class="app" tabindex="-1">
+    <div id="bg" class="background"></div>
+    <div id="bgB" class="background"></div>
+    <div id="spaceRoom" class="space-room"></div>
+    <div id="actor" class="actor">
+      <div id="actorBody" class="actor-body">
+        <img id="cardA" class="card" alt="" />
+        <img id="cardB" class="card" alt="" />
+      </div>
+    </div>
+
+    <div class="overlay-top">
+      <div class="title-wrap">
+        <div class="preview-badge">인연 미리보기</div>
+        <h1 id="title"></h1>
+        <p id="place" class="place"></p>
+      </div>
+      <div id="hearts" class="hearts" aria-label="인연 단계"></div>
+    </div>
+
+    <div id="chapter" class="chapter">
+      <div class="chapter-heart">♥</div>
+      <div id="chapterNum" class="chapter-num"></div>
+      <div id="chapterTitle" class="chapter-title"></div>
+    </div>
+
+    <div id="black" class="black"></div>
+    <div id="spaceStatus" class="space-status hidden"></div>
+    <button id="doorBtn" class="door-prompt hidden" type="button">문을 열고 들어가기</button>
+
+    <div id="dialogueBox" class="dialogue-box" tabindex="-1" aria-label="대화창">
+      <div class="speaker-row">
+        <div id="speaker" class="speaker"></div>
+        <div class="hint">클릭 · Space · Enter로 진행</div>
+      </div>
+      <div id="text" class="text"></div>
+      <div id="choicePanel" class="choice-panel hidden" role="group"></div>
+      <div class="bottom-row"><span></span><button id="nextBtn" class="primary" type="button">다음</button></div>
+    </div>
+
+    <div id="endCard" class="end-card hidden">
+      <div class="end-inner">
+        <div id="endName" class="end-name"></div>
+        <div id="endHearts" class="end-hearts"></div>
+        <div id="endLevel" class="end-level">인연 1단계</div>
+        <div class="end-next-head">다음 이야기</div>
+        <ul id="endNext" class="end-next"></ul>
+        <div class="end-promise">정식 업데이트에서 이어집니다</div>
+        <div class="end-sub">창을 닫으면 카니발로 돌아갑니다.</div>
+        <div class="end-note">※ 이 페이지는 생성형 AI를 활용하여 제작된 그림을 포함하고 있습니다.</div>
+      </div>
+    </div>
+
+    <div id="picker" class="picker hidden">
+      <div class="picker-card">
+        <h2>인연 미리보기</h2>
+        <p>카니발에서 돌아온 저녁, 히로인의 집을 찾아갑니다.</p>
+        <div class="picker-row">
+          <a class="primary big" href="?who=jane">제인</a>
+          <a class="primary big maya" href="?who=maya">마야</a>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">{ "imports": { "three": "../jane/3d/vendor/three/build/three.module.js" } }</script>
+  <script src="stories.js?v=8348d9d2"></script>
+  <script src="rel.js?v=e199a6fc"></script>
+</body>
+</html>
