@@ -131,8 +131,9 @@ button, a { font: inherit; }
 
 .hidden { display: none !important; }
 
-/* the game's web view is wide and short: a lower dialogue box leaves her face clear */
-@media (max-height: 640px), (min-aspect-ratio: 21/10) {
+/* the game's web view is wide and short: a lower dialogue box leaves her face and hands clear (10-07: the game's novel
+   window now takes the full screen height, 672 px tall in Maker, where the 200 px box covered her hands) */
+@media (max-height: 800px), (min-aspect-ratio: 21/10) {
   .dialogue-box { min-height: 0; padding: 10px 18px 8px; bottom: 10px; }
   .text { margin: 6px 0 4px; font-size: 16px; min-height: 2.2em; }
   .speaker { font-size: 16px; }
