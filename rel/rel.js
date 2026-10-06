@@ -202,6 +202,19 @@ function finish() {
     if (n.title) tt.textContent = '「' + n.title + '」'; else { tt.textContent = '???'; tt.classList.add('unknown'); }
     ui.endNext.appendChild(li);
   });
+  // her cutscene CGs to come (user 10-07), under the locked stories; a click shows one large, another click closes it
+  const strip = $('endCgStrip'), view = $('cgView');
+  strip.innerHTML = '';
+  (story.preview || []).forEach((name, i) => {
+    const b = document.createElement('button');
+    b.className = 'cg-thumb';
+    b.style.animationDelay = (1.0 + i * 0.14) + 's';
+    b.innerHTML = `<img src="assets/preview/${name}_thumb.webp" alt="">`;
+    b.onclick = ev => { ev.stopPropagation(); view.querySelector('img').src = `assets/preview/${name}.webp`; view.classList.remove('hidden'); };
+    strip.appendChild(b);
+  });
+  $('endCg').classList.toggle('hidden', !(story.preview || []).length);
+  view.onclick = () => view.classList.add('hidden');
   ui.end.classList.remove('hidden');
 }
 

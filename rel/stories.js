@@ -28,6 +28,8 @@ const PREVIEW_STORIES = Object.freeze({
   jane: {
     name: '제인',
     color: '#efaac4',
+    // her cutscene CGs to come, a short strip on the end card (user 10-07); assets/preview/<name>(_thumb).webp
+    preview: ['jane_1', 'jane_2', 'jane_3'],
     title: '용건은 없는데요',
     place: '리스항구 · 제인의 집 겸 작업실 · 밤',
     background: 'assets/bg/jane_workbench_night.webp',
@@ -96,6 +98,8 @@ const PREVIEW_STORIES = Object.freeze({
   jane2: {
     name: '제인',
     color: '#efaac4',
+    // her cutscene CGs to come, a short strip on the end card (user 10-07); assets/preview/<name>(_thumb).webp
+    preview: ['jane_1', 'jane_2', 'jane_3'],
     level: 2,
     title: '이거, 마가티아 거예요?',
     place: '리스항구 · 제인의 집 겸 작업실 · 밤',
@@ -153,6 +157,8 @@ const PREVIEW_STORIES = Object.freeze({
   maya: {
     name: '마야',
     color: '#a9dc8f',
+    // her cutscene CGs to come, a short strip on the end card (user 10-07); assets/preview/<name>(_thumb).webp
+    preview: ['maya_1', 'maya_2', 'maya_3'],
     title: '닫힌 창문이 마음에 걸려서요',
     place: '헤네시스 · 마야의 집 · 작업실',
     background: 'assets/bg/maya_living.webp',

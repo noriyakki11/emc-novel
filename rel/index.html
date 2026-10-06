@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Extreme Monster Carnival · 인연 미리보기</title>
-  <link rel="stylesheet" href="rel.css?v=547cb02b" />
+  <link rel="stylesheet" href="rel.css?v=fe7c84b5" />
 </head>
 <body>
   <div id="app" class="app" tabindex="-1">
@@ -55,10 +55,16 @@
         <div class="end-next-head">다음 이야기</div>
         <ul id="endNext" class="end-next"></ul>
         <div class="end-promise">정식 업데이트에서 이어집니다</div>
+        <div id="endCg" class="end-cg hidden">
+          <div class="end-next-head">함께할 장면 · 미리보기</div>
+          <div id="endCgStrip" class="end-cg-strip"></div>
+        </div>
         <div class="end-sub">창을 닫으면 카니발로 돌아갑니다.</div>
         <div class="end-note">※ 이 페이지는 생성형 AI를 활용하여 제작된 그림을 포함하고 있습니다.</div>
       </div>
     </div>
+
+    <div id="cgView" class="cg-view hidden"><img alt=""></div>
 
     <div id="picker" class="picker hidden">
       <div class="picker-card">
@@ -73,7 +79,7 @@
   </div>
 
   <script type="importmap">{ "imports": { "three": "../jane/3d/vendor/three/build/three.module.js" } }</script>
-  <script src="stories.js?v=500f0e87"></script>
-  <script src="rel.js?v=4882d1a9"></script>
+  <script src="stories.js?v=7945a01c"></script>
+  <script src="rel.js?v=f20deb53"></script>
 </body>
 </html>
