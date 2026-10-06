@@ -9,6 +9,9 @@ const JANE_ROOM = Object.freeze({
   // close and made her small beside the furniture), the lens lengthened so she is not smaller on the screen
   // (tuned 10-06 at 933x525); a camera spot further in would put the bench in front of her
   kind: 'living', height: 1.78, dist: 3.0, offset: 0.09, sink: 0.022, card3d: true,
+  // the lean-in once she stands (space.js frameOn): her card carries the tall hood ears, so a little less than Maya's
+  // 1.45 keeps her hands at the chest above the dialogue box
+  fill: 1.25,
   talk: { eye: [-0.215, -1.745, 1.32], target: [-0.45, 1.55, 1.1], lens: 37 },
   rig: {
     assets: '../jane/3d/out', exterior: '../jane/3d/out/harbor', light: 'night', version: 'rel-jane-20261006', smooth: true,

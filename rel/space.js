@@ -86,10 +86,15 @@ export async function startSpace({ container, onStep = () => {}, eyeHeight = 0, 
     a.onended = a.onerror = () => sounds.delete(a);
     a.play().catch(() => sounds.delete(a));
   }
+  // `frame`: once she stands to talk the picture leans in on her (user 10-07: in the game's web view the novel is small
+  // and she was hard to see) — a window 1/k of the picture, its corner at (nx, ny) shares of the view, over the lift.
+  // The camera's view offset draws only that window, so the close-up is rendered sharp, not an enlarged screenshot.
+  let frame = { k: 1, nx: 0, ny: 0 };
   function setOffset(v) {
     // shifts the picture up so the subject sits above the dialogue box
     offsetValue = v;
-    room.camera.setViewOffset(innerWidth, innerHeight, 0, Math.round(innerHeight * v), innerWidth, innerHeight);
+    const w = innerWidth, h = innerHeight;
+    room.camera.setViewOffset(w, h, w * frame.nx, h * (v + frame.ny), w / frame.k, h / frame.k);
     room.invalidate();
   }
   // Character cards standing in the room turn to the camera on every frame the camera moves (she is visible from the
@@ -309,6 +314,22 @@ export async function startSpace({ container, onStep = () => {}, eyeHeight = 0, 
       const low = room.toScreen(p), high = room.toScreen(p.clone().add(up));
       const h = Math.abs(low.y - high.y);
       return { left: low.x - h / 3, top: high.y, width: h * 2 / 3, height: h };
+    },
+    // Leans the picture in on a card standing at `foot` (`height` metres): her card fills `fill` of the screen height
+    // (face to waist above the dialogue box), its top `top` below the screen's top edge, centred across. Eased over `ms`.
+    async frameOn(foot, height, { fill = 1.45, top = 0.05, max = 1.6, ms = 900 } = {}) {
+      const from = { ...frame };
+      frame = { k: 1, nx: 0, ny: 0 }; setOffset(offsetValue);
+      const b = api.cardBox(foot, height), w = innerWidth, h = innerHeight;
+      const k = Math.min(max, Math.max(1, fill * h / b.height));
+      const to = { k, nx: (b.left + b.width / 2) / w - 0.5 / k, ny: b.top / h - top / k };
+      frame = from; setOffset(offsetValue);
+      if (k < 1.02) return;
+      await play(ms, t => {
+        const e = ease(t);
+        frame = { k: from.k + (to.k - from.k) * e, nx: from.nx + (to.nx - from.nx) * e, ny: from.ny + (to.ny - from.ny) * e };
+        setOffset(offsetValue);
+      });
     },
     setOffset,
     sound,

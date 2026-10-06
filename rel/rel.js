@@ -298,7 +298,7 @@ async function startSpace() {
   // the player walks in at the talking view's eye height (or the scene's own), the same from the house door on
   const rig = story.space.rig || null;   // a room with its own authored camera path keeps it (eye height included)
   const eyeHeight = spot ? spot.talk.eye[2] : (story.space.eye || 0);
-  const mod = await import('./space.js?v=879bb365');
+  const mod = await import('./space.js?v=9bd731b0');
   space = await Promise.race([
     mod.startSpace({ container: ui.spaceRoom, eyeHeight, rig,
       onStep: s => { if (AUTO) console.log('[rel] 3D step', s, Math.round(performance.now())); } }),
@@ -341,7 +341,10 @@ async function startSpace() {
   });
   if (living && story.space.card3d) {
     // she stays the card standing in the room through the talk (user 10-06): lit, sized and hidden by the furniture
-    // like the room around her; expressions swap on the same card
+    // like the room around her; expressions swap on the same card. Standing there, the picture leans in on her
+    // (user 10-07: small in the game's web view). ?fill=1.3 tunes it in check runs, ?fill=0 keeps the wide view.
+    const fill = AUTO && params.has('fill') ? Number(params.get('fill')) : story.space.fill;
+    if (fill !== 0) await space.frameOn(spot.foot, spot.height, fill ? { fill } : {});
     beginLines();
     return;
   }
